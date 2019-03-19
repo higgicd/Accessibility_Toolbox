@@ -26,9 +26,9 @@ arc.check_product()
 Accessibility can be defined as the ability to reach destinations of value while considering the difficulty involved in travelling to them (Páez, Scott & Morency, 2012). Several families of accessibility measures have been established since the pioneering work of Hansen (1959), including infrastructure-based, person-based, place-based, and utility-based (Geurs & van Wee, 2004). Of these, place-based measures are arguably the most common and can be operationalized as:
 
 $$
-A_i = \sum_{j}{W_jf(t_{ij})}
+A_i = \sum_{j}{O_jf(t_{ij})}
 $$
-where the accessibility $A$ of origin $i$ is the sum of all opportunities $W$ available at destinations $j$ weighted by some function of the travel time $t_{ij}$ between origins $i$ and destinations $j$.
+where the accessibility $A$ of origin $i$ is the sum of all opportunities $O$ available at destinations $j$ weighted by some function of the travel time $t_{ij}$ between origins $i$ and destinations $j$.
 
 Despite several decades of research into place-based accessibility, researchers, students, and practitioners interested in accessibility analysis face practical and empirical challenges. On the practical side, compared to simple isochrones, analyses of spatial interaction undertaken in the popular ArcGIS environment require many time-consuming and tedious steps. On the empirical side, questions persist over the selection of an impedance function and cost or cut-off parameters. In the absence of calibrated trip generation models, Kwan (1998) argues that the use of customized functions and parameters based on theory is preferable to arbitrary assignment.
 
