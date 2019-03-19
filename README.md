@@ -3,6 +3,8 @@
 ## Overview
 This repository contains the tools, code, and data to support the paper *Accessibility Toolbox for R and ArcGIS*.
 
+<img width="500" alt="fig_2" src="https://github.com/higgicd/Accessibility_Toolbox/blob/master/assets/fig_2.jpg">
+
 The Accessibility Toolbox contains two tools. The first is the **Accessibility Calculator** python toolbox for ArcGIS Pro and 10x simplifies the steps involved in a place-based accessibility workflow. Two versions of the tool are included in the toolbox: the first outputs a single origin-destination matrix while the second segments origins into smaller batches and overwrites the origin-destination matrix across iterations to save memory and disk space for large analyses.
 
 The second is an interactive **Accessibility Toolbox** R Notebook that visualizes the 5 impedance functions from Kwan (1998) and 28 impedance measures to aid in the selection and customization of accessibility cost functions. Customized parameters can be implemented in the ArcGIS tool's python code.
