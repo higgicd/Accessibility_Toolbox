@@ -3,7 +3,7 @@
 ## Overview
 This repository contains the tools, code, and data to support the paper *Accessibility Toolbox for R and ArcGIS*.
 
-<img width="500" alt="fig_2" src="https://github.com/higgicd/Accessibility_Toolbox/blob/master/assets/fig_2.jpg">
+<img width="800" alt="fig_2" src="https://github.com/higgicd/Accessibility_Toolbox/blob/master/assets/fig_2.jpg">
 
 The Accessibility Toolbox contains two tools. The first is the **Accessibility Calculator** python toolbox for ArcGIS Pro and 10x simplifies the steps involved in a place-based accessibility workflow. Two versions of the tool are included in the toolbox: the first outputs a single origin-destination matrix while the second segments origins into smaller batches and overwrites the origin-destination matrix across iterations to save memory and disk space for large analyses.
 
