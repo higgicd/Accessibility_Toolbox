@@ -17,7 +17,7 @@ The Accessibility Calculator has several inputs:
 - **Travel Mode** (Pro): the travel mode for your analysis from your network dataset
   - **Impedance Attribute** (10x): the travel cost used in your analysis from your network dataset
 - **Cutoff Value**: the travel time value at which to stop searching for destinations for a given origin
-- *Departure Time* (optional): a time of departure from the origins useful for analyses with traffic or GTFS transit scheduling
+- *Departure Time* (optional): a time of departure from the origins; useful for analyses with traffic or GTFS transit scheduling
   - a specific date and time can be specified as *3/19/2018 10:30 AM*
   - to specify that travel should begin at 5:00 PM on a typical Tuesday, use the parameter value *1/2/1900 5:00 PM*
   - see the ArcGIS [Make OD Cost Matrix Analysis Layer](https://pro.arcgis.com/en/pro-app/tool-reference/network-analyst/make-od-cost-matrix-analysis-layer.htm) reference for more guidance and examples on setting a *departure time* parameter
@@ -28,7 +28,7 @@ The Accessibility Calculator has several inputs:
 - **Origins ID Field**: a unique identifier for your input origins; can be any type of field
 - *Origins Network Search Tolerance* (optional): the search tolerance for locating the input features on the network; features that are outside the search tolerance are left unlocated
 - *Origins Network Search Query* (optional): specifies a query to restrict the search to a subset of the features within a source feature class; useful if you don't want to find features that may be unsuited for a network location
-  - for example, if you do not want your input origins to locate on major highways, you could input the SQL expression *["Streets", '"FREEWAY" = 0']*
+  - for example, if you do not want your input origins to locate on major highways, you could input the SQL expression *["Streets", ""FREEWAY" = 0"]*
   - in the example data, if you do not want origins to locate on tunnels or bridges, you could input the SQL expression *[["NYC_OSM_Walk", ""tunnel" <> 'yes'"], ["NYC_OSM_Walk", ""bridge" <> 'yes'"]]*
   - see the ArcGIS [Add Locations](https://pro.arcgis.com/en/pro-app/tool-reference/network-analyst/add-locations.htm) reference for more guidance and examples on setting a *search_criteria* parameter
 
@@ -40,7 +40,7 @@ The Accessibility Calculator has several inputs:
 - *Destinations Network Search Query* (optional): same notes as the *Origins Network Search Query*
 
 *General Settings*
-- **Output Work Folder**: the folder where the output geodatabase will be created
+- **Output Work Folder**: the folder where the output geodatabase will be created; working files generated during large analyses can require many gigabytes of disk space
 - **Name of Output Analysis Geodatabase**: name for the output geodatabase containing the scratch working files and the final tool output
 - *Delete OD lines where i = j?* (optional): if selected, the tool will delete any origin-destination lines or pairs where the origin was the same as the destination; useful if you only want to calculate access to opportunities that are external to the origins
 - *Join output back to origins?* (optional, Pro only): if selected, joins the accessibility output back to the input origins (relies on the *JoinField* tool in ArcGIS, which I cannot seem to get to work reliably in 10x)
@@ -53,7 +53,7 @@ Using the interactive R Notebook, users can explore 5 impedance functions:
 - cumulative opportunities rectangular
 - cumulative opportunities linear
 
-Each function is specified with several different impedance parameters for a total of 22 different impedance measures.
+Each function is specified with several different impedance parameters for a total of 28 different impedance measures.
 
 ## Adding Your Impedance Measure to the Tool
 Users can add or change the impedance functions in the ArcGIS Accessibility Calculator by editing the toolbox's python code. This can be done by editing the code through ArcGIS (right-click on the toolbox > edit). The original Jupyter Notebooks are also included if you prefer to edit in that interface and copy the code back to the toolbox in ArcGIS.

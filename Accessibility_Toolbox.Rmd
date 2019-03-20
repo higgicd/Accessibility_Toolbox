@@ -22,13 +22,19 @@ library(sf)
 arc.check_product()
 ```
 
+# ABSTRACT
+Analyses of spatial interaction undertaken in the popular ArcGIS environment require many time-consuming and tedious steps. Moreover, questions persist over the selection of an impedance function and cost or cut-off parameters. In response, this paper details a new Accessibility Toolbox for R and ArcGIS that includes a Python tool that simplifies accessibility analysis and an interactive R Notebook that enables the visualization and customization of impedance functions and parameters. Using this toolbox, researchers and practitioners can simplify their accessibility analyses and make better decisions about the specification and customization of travel impedance for their study context.
+
+# KEYWORDS
+accessibility, walking, travel behavior, travel impedance, distance decay function
+
 # RESEARCH QUESTIONS AND HYPOTHESES
-Accessibility can be defined as the ability to reach destinations of value while considering the difficulty involved in travelling to them (Páez, Scott & Morency, 2012). Several families of accessibility measures have been established since the pioneering work of Hansen (1959), including infrastructure-based, person-based, place-based, and utility-based (Geurs & van Wee, 2004). Of these, place-based measures are arguably the most common and can be operationalized as:
+Accessibility can be defined as the potential for reaching spatially distributed opportunities while considering the difficulty involved in traveling to them (Páez, Scott & Morency, 2012). Several families of accessibility measures have been established since the pioneering work of Hansen (1959), including infrastructure-based, person-based, place-based, and utility-based (Geurs & van Wee, 2004). Of these, place-based measures are arguably the most common and can be operationalized as:
 
 $$
 A_i = \sum_{j}{O_jf(t_{ij})}
 $$
-where the accessibility $A$ of origin $i$ is the sum of all opportunities $O$ available at destinations $j$ weighted by some function of the travel time $t_{ij}$ between origins $i$ and destinations $j$.
+where the accessibility $A$ of origin $i$ is the sum of all opportunities $O$ available at destinations $j$ weighted by some function of the travel time $t_{ij}$ between $i$ and $j$.
 
 Despite several decades of research into place-based accessibility, researchers, students, and practitioners interested in accessibility analysis face practical and empirical challenges. On the practical side, compared to simple isochrones, analyses of spatial interaction undertaken in the popular ArcGIS environment require many time-consuming and tedious steps. On the empirical side, questions persist over the selection of an impedance function and cost or cut-off parameters. In the absence of calibrated trip generation models, Kwan (1998) argues that the use of customized functions and parameters based on theory is preferable to arbitrary assignment.
 
@@ -237,7 +243,7 @@ Calculating place-based accessibility using the ArcGIS python toolbox requires t
 
 # FINDINGS
 
-The batch version of the tool is used to calculate accessibility to walkable employment reachable within 60 minutes from each of New York City’s more than 6,300 census block groups using all 20 impedance functions from Kwan (1998). The pedestrian street network was extracted using the OSMnx tool (Boeing, 2017) with a walking speed of about 5kph. Destinations are census block groups from the Smart Location Database (Ramsey & Bell, 2014) with employment data from the US Census Bureau's 2010 Longitudinal Employer-Household Dynamics (LEHD) dataset. Although useful for calculating job accessibility, one limitation of the LEHD data is that job totals may not reflect the physical location of an individual's workplace, but rather the administrative address reported by their employer.
+The batch version of the tool is used to calculate accessibility to walkable employment reachable within 60 minutes from each of New York City’s 6,293 census block groups using all 20 impedance functions from Kwan (1998). The pedestrian street network was extracted using the OSMnx tool (Boeing, 2017) with a walking speed of about 5kph. Destinations are census block groups from the Smart Location Database (Ramsey & Bell, 2014) with employment data from the US Census Bureau's 2010 Longitudinal Employer-Household Dynamics (LEHD) dataset. Although useful for calculating job accessibility, one limitation of the LEHD data is that job totals may not reflect the physical location of an individual's workplace, but rather the administrative address reported by their employer.
 
 Figure 2 maps the results of the analysis for the 5 impedance function specifications in Figure 1. Each function produces differences in both the number of weighted jobs accessible within 60 minutes and the distribution of accessibility over space. The rapid decline in the inverse power function (POW2_0) places a significant discount on jobs reachable after only a few minutes of walking. The EXP0_15, MGAUS180 functions produce smoother results. With its constant weight, the CUMR40 function shows the highest absolute job totals, while the CUML40 linearly discounts these totals as travel time increases.
 
