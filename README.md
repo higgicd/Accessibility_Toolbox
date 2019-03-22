@@ -3,14 +3,15 @@
 ## Overview
 This repository contains the tools, code, and data to support the paper *Accessibility Toolbox for R and ArcGIS*.
 
-<img width="800" alt="fig_2" src="https://github.com/higgicd/Accessibility_Toolbox/blob/master/assets/fig_2.jpg">
+<img width="900" alt="fig_2" src="https://github.com/higgicd/Accessibility_Toolbox/blob/master/assets/fig_2.jpg">
 
 The Accessibility Toolbox contains two tools. The first is the **Accessibility Calculator** python toolbox for ArcGIS Pro and 10x simplifies the steps involved in a place-based accessibility workflow. Two versions of the tool are included in the toolbox: the first outputs a single origin-destination matrix while the second segments origins into smaller batches and overwrites the origin-destination matrix across iterations to save memory and disk space for large analyses.
 
 The second is an interactive **Accessibility Toolbox** R Notebook that visualizes the 5 impedance functions from Kwan (1998) and 28 impedance measures to aid in the selection and customization of accessibility cost functions. Customized parameters can be implemented in the ArcGIS tool's python code.
 
 ## Calculating Accessibility in ArcGIS
-The Accessibility Calculator has several inputs:
+The Accessibility Calculator has several inputs:  
+<img align="right" width="300" height="1000" src="https://github.com/higgicd/Accessibility_Toolbox/blob/master/assets/toolbox_fig.png">
 
 *Network Details*
 - **Input Network Dataset**: the input Network Analyst network dataset for your analysis
@@ -42,6 +43,7 @@ The Accessibility Calculator has several inputs:
 *General Settings*
 - **Output Work Folder**: the folder where the output geodatabase will be created; working files generated during large analyses can require many gigabytes of disk space
 - **Name of Output Analysis Geodatabase**: name for the output geodatabase containing the scratch working files and the final tool output
+- **Batch OD Matrix Size Factor** (batch calculator only): gives you some control over the target size of the OD matrix for batching; default is 10 million rows; a larger number will result in fewer batches but larger matrices
 - *Delete OD lines where i = j?* (optional): if selected, the tool will delete any origin-destination lines or pairs where the origin was the same as the destination; useful if you only want to calculate access to opportunities that are external to the origins
 - *Join output back to origins?* (optional, Pro only): if selected, joins the accessibility output back to the input origins (relies on the *JoinField* tool in ArcGIS, which I cannot seem to get to work reliably in 10x)
 
