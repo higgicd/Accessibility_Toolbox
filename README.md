@@ -57,10 +57,10 @@ Using the interactive R Notebook, users can explore 5 impedance functions:
 
 Each function is specified with several different impedance parameters for a total of 28 different impedance measures.
 
-## Adding Your Impedance Measure to the Tool
-Users can add or change the impedance functions in the ArcGIS Accessibility Calculator by editing the toolbox's python code. This can be done by editing the code through ArcGIS (right-click on the toolbox > edit). The original Jupyter Notebooks are also included if you prefer to edit in that interface and copy the code back to the toolbox in ArcGIS.
+## Customizing or Adding Your Impedance Measure to the Tool
+Users can add or change the impedance functions in the ArcGIS Accessibility Calculator by editing the toolbox's Python code in the *.pyt* files. This can be done by editing the code through ArcGIS (right-click on the toolbox > edit). The original Jupyter Notebooks are also included if you prefer to edit in that interface and copy the code back to the toolbox via ArcGIS or a text editor.
 
-The impedance parameters are stored in the dictionary *p* in the toolbox code, which can be found at around line 200 for the Accessibility Calculator and line 675 for the Batch Accessibility Calculator tools in each version of the toolbox. Using the examples of the *POW0_8* and *CUMR10* impedance measures, each dictionary entry contains four elements:
+The impedance parameters are stored in the parameter dictionary *p* in the toolbox code, which can be found at around line 200 for the Accessibility Calculator and line 675 for the Batch Accessibility Calculator tools in each version of the toolbox. Using the examples of the *POW0_8* and *CUMR10* impedance measures, each dictionary entry contains four elements:
 
 ```
 p = {
@@ -79,9 +79,9 @@ p = {
 - *"b0"*: the key *b0* indexes the value of the beta parameter for the impedance measure that will be input into the impedance function
   - in the case of the *POW0_8* measure, *0.8* refers to a beta value of 0.8
   - because *CUMR10* does not use this parameter it has a value of *None*
-- *"t_bar": None*: the key *"t_bar"* indexes the value of the travel time window for the cumulative impedance functions
+- *"t_bar"*: the key *"t_bar"* indexes the value of the travel time window for the cumulative impedance functions
   - in the case of the *CUMR10* measure, *10* refers to a travel time window of 10 minutes
-  - because *POW0_8* does not use this parameter it has a value of *None*
+  - because *POW0_8* does not use this parameter, it has a value of *None*
 
 When inputting a new measure into the dictionary, it must have entries for the *f*, *b0*, and *t_bar* parameters, even if they are *None*
 

@@ -15,30 +15,30 @@ knitr::opts_chunk$set(echo = TRUE)
 library(knitr)
 library(dplyr)
 library(ggplot2)
-library(arcgisbinding)
 library(tmap)
 library(corrplot)
 library(sf)
-arc.check_product()
+#library(arcgisbinding) #changed to load in the RESULTS section
+#arc.check_product()
 ```
 
 # ABSTRACT
-Analyses of spatial interaction undertaken in the popular ArcGIS environment require many time-consuming and tedious steps. Moreover, questions persist over the selection of an impedance function and cost or cut-off parameters. In response, this paper details a new Accessibility Toolbox for R and ArcGIS that includes a Python tool that simplifies accessibility analysis and an interactive R Notebook that enables the visualization and customization of impedance functions and parameters. Using this toolbox, researchers and practitioners can simplify their accessibility analyses and make better decisions about the specification and customization of travel impedance for their study context.
+Analyses of place-based accessibility undertaken in the popular ArcGIS environment require many time-consuming and tedious steps. Moreover, questions persist over the selection of an impedance function and cost or cut-off parameters. In response, this paper details a new Accessibility Toolbox for R and ArcGIS that includes a Python tool for conducting accessibility analyses and an interactive R Notebook that enables the visualization and customization of impedance functions and parameters. Using this toolbox, researchers and practitioners can simplify their accessibility analysis workflow and make better decisions about the specification and customization of travel impedance for their study context.
 
 # KEYWORDS
-accessibility, walking, travel behavior, travel impedance, distance decay function
+accessibility, spatial interaction, travel behavior, travel impedance, distance decay function
 
 # RESEARCH QUESTIONS AND HYPOTHESES
-Accessibility can be defined as the potential for reaching spatially distributed opportunities while considering the difficulty involved in traveling to them (Páez, Scott & Morency, 2012). Several families of accessibility measures have been established since the pioneering work of Hansen (1959), including infrastructure-based, person-based, place-based, and utility-based (Geurs & van Wee, 2004). Of these, place-based measures are arguably the most common and can be operationalized as:
+Accessibility can be defined as the potential for reaching spatially distributed opportunities while considering the difficulty involved in traveling to them (Páez, Scott, and Morency, 2012). Several families of accessibility measures have been established since the pioneering work of Hansen (1959), including infrastructure-based, person-based, place-based, and utility-based (Geurs and van Wee, 2004). Of these, place-based measures are arguably the most common and can be operationalized as:
 
 $$
 A_i = \sum_{j}{O_jf(t_{ij})}
 $$
 where the accessibility $A$ of origin $i$ is the sum of all opportunities $O$ available at destinations $j$ weighted by some function of the travel time $t_{ij}$ between $i$ and $j$.
 
-Despite several decades of research into place-based accessibility, researchers, students, and practitioners interested in accessibility analysis face practical and empirical challenges. On the practical side, compared to simple isochrones, analyses of spatial interaction undertaken in the popular ArcGIS environment require many time-consuming and tedious steps. On the empirical side, questions persist over the selection of an impedance function and cost or cut-off parameters. In the absence of calibrated trip generation models, Kwan (1998) argues that the use of customized functions and parameters based on theory is preferable to arbitrary assignment.
+Despite several decades of research into place-based accessibility, researchers, students, and practitioners interested in accessibility analysis face practical and empirical challenges. On the practical side, compared to simple isochrones, analyses of spatial interaction undertaken in the popular ArcGIS environment require many time-consuming and tedious steps. On the empirical side, questions persist over the selection of an impedance function and cost or cut-off parameters. Ideally, these statistical parameters should be derived from calibrated trip generation models, but in the absence of such data, Kwan (1998) argues that the use of customized functions and parameters based on theory is preferable to arbitrary assignment.
 
-To promote a more "accessible" solution for accessibility analyses, this paper details a new Accessibility Toolbox for R and ArcGIS. The python toolbox for ArcGIS simplifies the steps involved in a place-based accessibility workflow and comes coded with 5 impedance functions and 28 impedance measures for accessibility calculation. The interactive R Notebook version of this paper visualizes the function families and specifications and allows users to customize their parameters in accordance with theory and experience with their study area. These parameters can then be implemented in the ArcGIS tool’s python code.
+To promote a more "accessible" solution for accessibility analyses, this paper details a new Accessibility Toolbox for R and ArcGIS. The Python toolbox for ArcGIS simplifies the steps involved in a place-based accessibility workflow and comes coded with 5 impedance functions and 28 impedance measures for accessibility calculation. The interactive R Notebook version of this paper visualizes the function families and specifications and allows users to customize their parameters in accordance with theory and experience with their study area. These parameters can then be implemented in the ArcGIS tool’s Python code.
 
 # METHODS AND DATA
 The accessibility toolbox implements the five different impedance functions from Kwan (1998):
@@ -68,12 +68,14 @@ $$
 \end{aligned}
 $$
 
-The inverse power, negative exponential, and modified gaussian functions continuously discount the weight of opportunities as travel time increases using an impedance parameter $\beta$. Of these, the inverse power function produces a rapid decline in the weight of opportunities as travel time increases.
+The inverse power, negative exponential, and modified Gaussian functions continuously discount the weight of opportunities as travel time increases using an impedance parameter $\beta$ that accounts for the cost of travel.
 
 ```{r travel time, echo=FALSE}
 # first define the travel time increment, in this case from 0 to 60 minutes
 t_ij <- data.frame(t_ij = seq(from = 0, to = 60, by=1))
 ```
+
+With a foundation in early gravity models of spatial interaction (e.g. Stewart, 1948; Zipf, 1949), the inverse power function produces a rapid decline in the weight of opportunities as travel time increases. While power functions draw analogs to Newtonian physics, their theoretical relevance to human travel behavior has been questioned (Sen and Smith, 1995).
 
 ```{r inverse power function, echo=FALSE}
 power_f <- function(t_ij,b0){ifelse(test = t_ij < 1, yes = 1, no = t_ij^-b0)}
@@ -102,7 +104,7 @@ ggplot((t_ij), aes(t_ij)) +
   labs(title = "Inverse Power Function")
 ```
 
-The negative exponential function is more gradual and appears to have become somewhat of a de-facto standard in applied accessibility analysis.
+The negative exponential function is more gradual and based on its strong theoretical foundations in entropy maximization (Wilson, 1971) and choice behavior theory (Fotheringham and O’Kelly, 1989), this function appears to have become somewhat of a de-facto standard in applied accessibility analysis.
 
 ```{r negative exponential function, echo=FALSE}
 neg_exp_f = function(t_ij,b0){exp(-b0*t_ij)}
@@ -133,7 +135,7 @@ ggplot((t_ij), aes(t_ij)) +
   labs(title = "Negative Exponential Function")
 ```
 
-The modified gaussian function exhibits a much more gradual rate of decline around its origin and a slower rate of decline overall, which Ingram (1971) argues makes it superior to its inverse power and negative exponential counterparts, although it appears rarely used in the applied literature.
+The modified Gaussian function exhibits a much more gradual rate of decline around its origin and a slower rate of decline overall. While Ingram (1971) argues these properties make the function superior to its inverse power and negative exponential counterparts for explaining observed travel behavior, it appears rarely used in the applied literature.
 
 ```{r modified gaussian function, echo=FALSE}
 mgaus_f = function(t_ij,b0){exp(-t_ij^2/b0)}
@@ -162,7 +164,7 @@ ggplot((t_ij), aes(t_ij)) +
   labs(title = "Modified Gaussian Function")
 ```
 
-The cumulative rectangular function is an isochronic measure that applies a constant weight to all opportunities reachable within some travel time window whose maximum is defined by $\bar{t}$. Although the application of a constant weight runs counter to the geographic principle of distance decay that underpins travel behaviour theory, such functions remain popular due to their ease of interpretation.
+The cumulative rectangular function is an isochronic measure that applies a constant weight to all opportunities reachable within some travel time window whose maximum is defined by $\bar{t}$. Although the application of a constant weight runs counter to the geographic principle of distance deterrence or decay that underpins travel behavior theory, such functions remain popular due to their ease of interpretation.
 
 ```{r cumulative rectangular function, echo=FALSE}
 cumr_f = function(t_ij,t_bar){ifelse(test = t_ij <= t_bar, yes = 1, no = 0)}
@@ -220,7 +222,9 @@ ggplot((t_ij), aes(t_ij)) +
   labs(title = "Cumulative Linear Function")
 ```
 
-Kwan sets four impedance parameters for each function designed to produce a weight of about 0.1 at travel times of 5, 10, 15, and 20 minutes respectively. Figure 1 recreates a figure from Kwan (1998) to visualize parameter values for the 5 functions: the inverse power function with $\beta = 2$ (POW2_0); the negative exponential function with $\beta = 0.15$ (EXP0_15); the modified gaussian function with $\beta = 180$ (MGAUS180); and the cumulative rectangular (CUMR40) and linear (CUML40) functions with $\bar{t}$ set to 40 minutes.
+This set of impedance functions is by no means exhaustive. Numerous alternatives have been proposed, such as the exponential-normal, exponential-square root, and log-normal functions reviewed by Reggiani et al. (2011) and the Box-Cox, Tanner, and Richards functions reviewed by Martínez and Viegas (2013). Although these functions could be implemented in future iterations of the tool, the present paper’s focus on the functions specified in Kwan (1998) introduces some of the most widely used measures of impedance in applied accessibility analysis.
+
+Kwan (1998) sets four impedance parameters for each continuous function designed to produce a weight of about 0.1 at travel times of 5, 10, 15, and 20 minutes respectively. Figure 1 recreates a figure from Kwan (1998) to visualize parameter values for the 5 functions: the inverse power function with $\beta = 2$ (POW2_0); the negative exponential function with $\beta = 0.15$ (EXP0_15); the modified Gaussian function with $\beta = 180$ (MGAUS180); and the cumulative rectangular (CUMR40) and linear (CUML40) functions with $\bar{t}$ set to 40 minutes.
 
 ```{r figure1, echo=FALSE, fig.cap="\\label{fig:figure1}Figure 1. Impedance Function Comparison"}
 ggplot((t_ij), aes(t_ij)) +
@@ -239,21 +243,32 @@ ggplot((t_ij), aes(t_ij)) +
   labs(title = "Figure 1. Impedance Function Comparison")
 ```
 
-Calculating place-based accessibility using the ArcGIS python toolbox requires the selection of a network dataset, cost attribute, and search cut-off travel time; one or more impedance functions; and input origins, destinations, and opportunities. Two versions of the tool are included in the toolbox: the first outputs a single origin-destination matrix while the second segments origins into smaller batches and overwrites the origin-destination matrix across iterations to save memory and disk space for large analyses. In addition to Kwan’s (1998) impedance specifications, the toolbox also implements Handy and Niemeier's (1997) negative exponential specification calibrated to walking trips for convenience shopping in Oakland, CA in 1980 and several additional popular cumulative rectangular measures.
+Calculating place-based accessibility using the ArcGIS Python toolbox requires the selection of a network dataset, cost attribute, and search cut-off travel time; one or more of the 28 impedance functions implemented in the tool (Table 1); input origins and destinations (point or polygon); and a numerical attribute representing destination opportunities. Two versions of the tool are included in the toolbox: the first outputs a single origin-destination matrix while the second segments origins into smaller batches and overwrites the origin-destination matrix across iterations to save memory and disk space for large analyses. In addition to Kwan’s (1998) impedance specifications, the toolbox also implements Handy and Niemeier's (1997) negative exponential specification calibrated to walking trips for convenience shopping in Oakland, CA in 1980 and several additional popular cumulative rectangular measures.
+
+```{r table1, echo=FALSE}
+table1 <- read.csv("./data/table1.csv")
+kable(table1, caption = "Table 1. Impedance Measures in the Accessibility Toolbox", col.names = c("Impedance<br/>Measure", "Impedance<br/>Parameter ", "<br/>Source"), escape = FALSE, format = "pandoc")
+```
 
 # FINDINGS
+The batch version of the tool is used to calculate accessibility to walkable employment reachable within 60 minutes from each of New York City’s 6,293 census block groups using all 18 impedance measures from Kwan (1998). The pedestrian street network was extracted using the OSMnx tool (Boeing, 2017) with a walking speed of about 5kph. Destinations are census block groups from the Smart Location Database (Ramsey and Bell, 2014) with employment data from the US Census Bureau's 2010 Longitudinal Employer-Household Dynamics (LEHD) dataset. Although useful for calculating job accessibility, one limitation of the LEHD data is that job totals may not reflect the physical location of an individual's workplace, but rather the administrative address reported by their employer.
 
-The batch version of the tool is used to calculate accessibility to walkable employment reachable within 60 minutes from each of New York City’s 6,293 census block groups using all 20 impedance functions from Kwan (1998). The pedestrian street network was extracted using the OSMnx tool (Boeing, 2017) with a walking speed of about 5kph. Destinations are census block groups from the Smart Location Database (Ramsey & Bell, 2014) with employment data from the US Census Bureau's 2010 Longitudinal Employer-Household Dynamics (LEHD) dataset. Although useful for calculating job accessibility, one limitation of the LEHD data is that job totals may not reflect the physical location of an individual's workplace, but rather the administrative address reported by their employer.
+```{r load results, message=FALSE, warning=FALSE, include=FALSE}
+# use arcgisbinding package to load results from example geodatabase
+library(arcgisbinding)
+arc.check_product()
 
-Figure 2 maps the results of the analysis for the 5 impedance function specifications in Figure 1. Each function produces differences in both the number of weighted jobs accessible within 60 minutes and the distribution of accessibility over space. The rapid decline in the inverse power function (POW2_0) places a significant discount on jobs reachable after only a few minutes of walking. The EXP0_15, MGAUS180 functions produce smoother results. With its constant weight, the CUMR40 function shows the highest absolute job totals, while the CUML40 linearly discounts these totals as travel time increases.
-
-```{r load results, message=FALSE, warning=FALSE, echo=FALSE}
-# read results from the Accessibility Calculator for ArcGIS
+# read results from the Accessibility Calculator for ArcGIS and convert to sf
 nyc_results_sf <- arc.open("./data/Accessibility_Toolbox_NYC_Demo.gdb/NYC_SmartLocationDB") %>% arc.select() %>% arc.data2sf()
 
 # strip the SUM_Ai_ (accessibility for location i) notation from the ArcGIS tool output for mapping
 names(nyc_results_sf) <- sub("SUM_Ai_", "", names(nyc_results_sf))
+
+# no ArcGIS? comment out the code above and you can load the example results data using this instead:
+#load("./data/Accessibility_Toolbox_NYC_Results.RData")
 ```
+
+Figure 2 maps the results of the analysis for the 5 impedance function specifications in Figure 1. Each impedance measure produces differences in both the number of weighted jobs accessible within 60 minutes and the distribution of accessibility over space. The rapid decline in the inverse power measure (POW2_0) places a significant discount on jobs reachable after only a few minutes of walking. The EXP0_15 and MGAUS180 measures produce smoother results. With its constant weight, the CUMR40 measure shows the highest absolute job totals, while the CUML40 linearly discounts these totals as travel time increases.
 
 ```{r figure2, fig.height=3.5, fig.width=12.5, fig.cap="\\label{fig:figure2}Figure 2. Walkable Employment Accessibility Comparison", message=FALSE, warning=FALSE, echo=FALSE}
 # map results from ArcGIS
@@ -274,11 +289,11 @@ names(maps) <- f_list
 tmap_arrange(maps, nrow = 1, ncol = 5)
 ```
 
-Similar to Kwan (1998) and Vale & Pereira (2017), correlations in accessibility across measures are generally strong (Figure 3), indicating many capture similar spatial processes. Nevertheless, absolute accessibility totals differ across each, suggesting the choice of a suitable impedance function and specification remains an important issue that should be guided by theory and assumptions about travel behaviour. Using this toolbox, researchers and practitioners can make better decisions about the specification and customization of impedance functions and simplify the calculation of place-based accessibility for their study context.
+Similar to Kwan (1998) and Vale and Pereira (2017), correlations in accessibility across measures are generally strong (Figure 3), indicating many capture similar spatial processes. Of those used in Figures 1 and 2 for example, results from the negative exponential (EXP0_15), modified Gaussian (MGAUS180), cumulative rectangular (CUMR40), and cumulative linear (CUML40) measures of impedance all show correlation coefficients of at least 0.87. In particular, the correlation between the EXP0_15 and MGAUS180 measures is 1.00. Results from the inverse power (POW2_0) measure are more unique, with correlations ranging from 0.57 to 0.81. It should be emphasized that such outcomes are not a product of similar functional forms alone; rather, the correlations reflect an interaction between the different impedance measures and the spatial distribution of opportunities on the travel network in the study area. Furthermore, absolute accessibility totals differ across each, suggesting the choice of a suitable impedance function and specification remains an important issue that should be guided by theory and assumptions about travel behavior.
 
 ```{r figure3, fig.height=10, fig.width=10, fig.cap="\\label{fig:figure3}Figure 3. Impedance Measure Correlations", echo=FALSE}
 # create dataframe of variables for correlation analysis
-correlation_df <- st_drop_geometry(nyc_results_sf[5:24])
+correlation_df <- st_drop_geometry(nyc_results_sf[5:22])
 
 correlations <- cor(correlation_df)
 
@@ -298,19 +313,23 @@ corrplot(correlations,
          method = "color", # corrplot method
          type = "upper", # upper triangle matrix
          addCoef.col = "white", # correlation text colour
-         number.cex = 0.7, # correlation text size
+         number.cex = 0.8, # correlation text size
          tl.col = "black", # text label colour
          tl.srt = 45, # text label angle
-         tl.cex = 0.8, # text label size
+         tl.cex = 0.9, # text label size
          cl.lim = c(0.5, 1), # colour label limits
          #diag = FALSE, # turn off diagonal
          is.corr=FALSE, # because all coefficients are positive
          col = virid(100)) # custom colour scheme based on viridis hex values
 ```
 
+While the focus on walking trips in this sample analysis does not provide a full picture of travel behavior in the study area, the ability to run multiple analyses for different travel modes is limited only by their availability in the user’s network dataset. Moreover, the R notebook can be utilized to select or customize the implemented impedance measures in accordance with expectations about travel behavior for each mode. Taken together, this toolbox enables researchers and practitioners to make better decisions about the specification and customization of travel impedance and simplify the calculation of place-based accessibility for their study context.
+
 # REFERENCES
 
 Boeing, G. (2017). OSMnx: New methods for acquiring, constructing, analyzing, and visualizing complex street networks. *Computers, Environment and Urban Systems*, 65, 126-139. https://doi.org/10.1016/j.compenvurbsys.2017.05.004
+
+Fotheringham, A. S., & O’Kelly, M. E. (1989). *Spatial interaction models: Formulations and applications*. Boston: Kluwer Academic.
 
 Geurs, K. T., & Van Wee, B. (2004). Accessibility evaluation of land-use and transport strategies: review and research directions. *Journal of Transport Geography*, 12(2), 127-140. https://doi.org/10.1016/j.jtrangeo.2003.10.005
 
@@ -322,8 +341,20 @@ Ingram, D. R. (1971). The concept of accessibility: A search for an operational 
 
 Kwan, M. P. (1998). Space‐time and integral measures of individual accessibility: A comparative analysis using a point‐based framework. *Geographical Analysis*, 30(3), 191-216. https://doi.org/10.1111/j.1538-4632.1998.tb00396.x
 
+Martínez, L. M., & Viegas, J. M. (2013). A new approach to modelling distance-decay functions for accessibility assessment in transport studies. *Journal of Transport Geography*, 26, 87-96. https://doi.org/10.1016/j.jtrangeo.2012.08.018
+
 Páez, A., Scott, D. M., & Morency, C. (2012). Measuring accessibility: Positive and normative implementations of various accessibility indicators. *Journal of Transport Geography*, 25, 141-153. https://doi.org/10.1016/j.jtrangeo.2012.03.016
 
-Ramsey, K., & Bell, A. (2014). Smart location database. Washington, DC. https://www.epa.gov/sites/production/files/2014-03/documents/sld_userguide.pdf
+Ramsey, K., & Bell, A. (2014). *Smart location database*. Washington, DC. https://www.epa.gov/sites/production/files/2014-03/documents/sld_userguide.pdf
+
+Reggiani, A., Bucci, P., & Russo, G. (2011). Accessibility and impedance forms: empirical applications to the German commuting network. *International Regional Science Review*, 34(2), 230-252. https://doi.org/10.1177/0160017610387296
+
+Sen, A., & Smith, T. E. (1995). *Gravity models of spatial interaction behavior*. Berlin: Springer-Verlag.
+
+Stewart, J. Q. (1948). Demographic gravitation: evidence and applications. *Sociometry*, 11(1/2), 31-58. https://doi.org/10.2307/2785468
 
 Vale, D. S., & Pereira, M. (2017). The influence of the impedance function on gravity-based pedestrian accessibility measures: A comparative analysis. *Environment and Planning B: Urban Analytics and City Science*, 44(4), 740-763. https://doi.org/10.1177%2F0265813516641685
+
+Wilson, A. G. (1971). A family of spatial interaction models, and associated developments. *Environment and Planning A*, 3(1), 1-32. https://doi.org/10.1068/a030001
+
+Zipf, G. K. (1949). *Human behavior and the principle of least effort*. Cambridge: Addison-Wesley.

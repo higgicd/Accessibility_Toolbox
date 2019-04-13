@@ -1,0 +1,34 @@
+Impedance Measure,Impedance Parameter,Source
+*Inverse Power Function*,,
+&nbsp;&nbsp;POW0_8,$\beta = 0.8$,Kwan (1998)
+&nbsp;&nbsp;POW1_0,$\beta = 1.0$,Kwan (1998)
+&nbsp;&nbsp;POW1_5,$\beta = 1.5$,Kwan (1998)
+&nbsp;&nbsp;POW2_0,$\beta = 2.0$,Kwan (1998)
+&nbsp;&nbsp;POWCUS,$\beta = \text{user customizable}$,
+*Negative Exponential Function*,,
+&nbsp;&nbsp;EXP0_12,$\beta = 0.12$,Kwan (1998)
+&nbsp;&nbsp;EXP0_15,$\beta = 0.15$,Kwan (1998)
+&nbsp;&nbsp;EXP0_22,$\beta = 0.22$,Kwan (1998)
+&nbsp;&nbsp;EXP0_45,$\beta = 0.45$,Kwan (1998)
+&nbsp;&nbsp;HN1997,$\beta = 0.1813$,Handy and Niemeier (1997)
+&nbsp;&nbsp;EXPCUS,$\beta = \text{user customizable}$,
+*Modified Gaussian Function*,,
+&nbsp;&nbsp;MGAUS10,$\beta = 10$,Kwan (1998)
+&nbsp;&nbsp;MGAUS40,$\beta = 40$,Kwan (1998)
+&nbsp;&nbsp;MGAUS100,$\beta = 100$,Kwan (1998)
+&nbsp;&nbsp;MGAUS180,$\beta = 180$,Kwan (1998)
+&nbsp;&nbsp;MGAUSCUS,$\beta = \text{user customizable}$,
+*Cumulative Rectangular Function*,,
+&nbsp;&nbsp;CUMR5,$\bar{t} = 5$,
+&nbsp;&nbsp;CUMR10,$\bar{t} = 10$,
+&nbsp;&nbsp;CUMR15,$\bar{t} = 15$,
+&nbsp;&nbsp;CUMR20,$\bar{t} = 20$,Kwan (1998)
+&nbsp;&nbsp;CUMR30,$\bar{t} = 30$,Kwan (1998)
+&nbsp;&nbsp;CUMR40,$\bar{t} = 40$,Kwan (1998)
+&nbsp;&nbsp;CUMR45,$\bar{t} = 45$,
+&nbsp;&nbsp;CUMR60,$\bar{t} = 60$,
+*Cumulative Linear Function*,,
+&nbsp;&nbsp;CUML10,$\bar{t} = 10$,
+&nbsp;&nbsp;CUML20,$\bar{t} = 20$,Kwan (1998)
+&nbsp;&nbsp;CUML30,$\bar{t} = 30$,Kwan (1998)
+&nbsp;&nbsp;CUML40,$\bar{t} = 40$,Kwan (1998)
