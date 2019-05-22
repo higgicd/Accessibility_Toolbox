@@ -4,6 +4,7 @@
 # Department of Building and Real Estate
 # The Hong Kong Polytechnic University
 # https://higgicd.github.io
+# tool help can be found at https://github.com/higgicd/Accessibility_Toolbox
     
 import arcpy
 from arcpy import env
@@ -37,7 +38,7 @@ class AccessCalc(object):
         param0 = arcpy.Parameter(
             displayName="Input Network Dataset",
             name="network",
-            datatype="DENetworkDataset",
+            datatype="GPNetworkDatasetLayer",
             parameterType="Required",
             direction="Input")
         
@@ -75,7 +76,7 @@ class AccessCalc(object):
         param5 = arcpy.Parameter(
             displayName="Origins",
             name="origins_i_input",
-            datatype="DEFeatureClass",
+            datatype="GPFeatureLayer",
             parameterType="Required",
             direction="Input")
         
@@ -95,84 +96,101 @@ class AccessCalc(object):
         param7.value = "5000 Meters"
         
         param8 = arcpy.Parameter(
-            displayName="Origins Network Search Query",
-            name="search_query_i",
+            displayName="Origins Network Search Criteria",
+            name="search_criteria_i",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
         param8.value = "None"
         
         param9 = arcpy.Parameter(
+            displayName="Origins Network Search Query",
+            name="search_query_i",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input")
+        param9.value = "None"
+        
+        param10 = arcpy.Parameter(
             displayName="Destinations",
             name="destinations_j_input",
-            datatype="DEFeatureClass",
+            datatype="GPFeatureLayer",
             parameterType="Required",
             direction="Input")
         
-        param10 = arcpy.Parameter(
+        param11 = arcpy.Parameter(
             displayName="Destinations ID Field",
             name="j_id",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
         
-        param11 = arcpy.Parameter(
+        param12 = arcpy.Parameter(
             displayName="Destination Opportunities Field",
             name="opportunities_j",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
  
-        param12 = arcpy.Parameter(
+        param13 = arcpy.Parameter(
             displayName="Destinations Network Search Tolerance",
             name="search_tolerance_j",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
-        param12.value = "5000 Meters"
+        param13.value = "5000 Meters"
         
-        param13 = arcpy.Parameter(
+        param14 = arcpy.Parameter(
+            displayName="Destinations Network Search Criteria",
+            name="search_criteria_j",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input")
+        param14.value = "None"
+        
+        param15 = arcpy.Parameter(
             displayName="Destinations Network Search Query",
             name="search_query_j",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
-        param13.value = "None"
+        param15.value = "None"
         
-        param14 = arcpy.Parameter(
+        param16 = arcpy.Parameter(
             displayName="Output Work Folder",
             name="output_dir",
             datatype="DEWorkspace",
             parameterType="Required",
             direction="Input")
-        param14.filter.list = ["File System"]
+        param16.filter.list = ["File System"]
         
-        param15 = arcpy.Parameter(
+        param17 = arcpy.Parameter(
             displayName="Name of Output Analysis Geodatabase",
             name="output_gdb",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
-        param15.value = "AccessCalc"
+        param17.value = "AccessCalc"
         
-        param16 = arcpy.Parameter(
+        param18 = arcpy.Parameter(
             displayName="Delete OD lines where i equals j?",
             name="del_i_eq_j",
             datatype="GPBoolean",
             parameterType="Optional",
             direction="Input")
-        param16.value = False
+        param18.value = False
         
-        param17 = arcpy.Parameter(
+        param19 = arcpy.Parameter(
             displayName="Join output back to origins?",
             name="join_back_i",
             datatype="GPBoolean",
             parameterType="Optional",
             direction="Input")
-        param17.value = False
+        param19.value = False
         
         params = [param0, param1, param2, param3, param4, param5, param6, param7, param8,\
-                  param9, param10, param11, param12, param13, param14, param15, param16, param17]
+                  param9, param10, param11, param12, param13, param14, param15, param16,\
+                  param17, param18, param19]
         return params
     
     def isLicensed(self):
@@ -238,13 +256,13 @@ class AccessCalc(object):
         else:
             parameters[6].filter.list = []
         
-        if parameters[9].altered:
-            fields10 = [f.name for f in arcpy.ListFields(parameters[9].valueAsText)]
-            parameters[10].filter.list = fields10
-            parameters[11].filter.list = fields10
+        if parameters[10].altered:
+            fields11 = [f.name for f in arcpy.ListFields(parameters[10].valueAsText)]
+            parameters[11].filter.list = fields11
+            parameters[12].filter.list = fields11
         else:
-            parameters[10].filter.list = []
             parameters[11].filter.list = []
+            parameters[12].filter.list = []
         
         return
 
@@ -262,16 +280,18 @@ class AccessCalc(object):
         origins_i_input = parameters[5].valueAsText
         i_id = parameters[6].valueAsText
         search_tolerance_i = parameters[7].valueAsText
-        search_query_i = parameters[8].valueAsText
-        destinations_j_input = parameters[9].valueAsText
-        j_id = parameters[10].valueAsText
-        opportunities_j = parameters[11].valueAsText
-        search_tolerance_j = parameters[12].valueAsText
-        search_query_j = parameters[13].valueAsText
-        output_dir = parameters[14].valueAsText
-        output_gdb = parameters[15].valueAsText
-        del_i_eq_j = parameters[16].valueAsText
-        join_back_i = parameters[17].valueAsText
+        search_criteria_i = parameters[8].valueAsText
+        search_query_i = parameters[9].valueAsText
+        destinations_j_input = parameters[10].valueAsText
+        j_id = parameters[11].valueAsText
+        opportunities_j = parameters[12].valueAsText
+        search_tolerance_j = parameters[13].valueAsText
+        search_criteria_j = parameters[14].valueAsText
+        search_query_j = parameters[15].valueAsText
+        output_dir = parameters[16].valueAsText
+        output_gdb = parameters[17].valueAsText
+        del_i_eq_j = parameters[18].valueAsText
+        join_back_i = parameters[19].valueAsText
         layer_name = "Accessibility OD Matrix"
         origins_i_desc = arcpy.Describe(origins_i_input)
         origins_i_path = origins_i_desc.path
@@ -392,6 +412,7 @@ class AccessCalc(object):
         arcpy.na.AddLocations(layer_object, origins_layer_name, origins_i, 
                               field_mappings_i,
                               search_tolerance = search_tolerance_i,
+                              search_criteria = search_criteria_i,
                               append = "CLEAR",
                               exclude_restricted_elements = "EXCLUDE",
                               search_query = search_query_i)
@@ -407,6 +428,7 @@ class AccessCalc(object):
         arcpy.na.AddLocations(layer_object, destinations_layer_name, destinations_j, 
                               field_mappings_j,
                               search_tolerance = search_tolerance_j,
+                              search_criteria = search_criteria_j,
                               append = "CLEAR",
                               exclude_restricted_elements = "EXCLUDE",
                               search_query = search_query_j)
@@ -503,7 +525,7 @@ class AccessBatch(object):
         param0 = arcpy.Parameter(
             displayName="Input Network Dataset",
             name="network",
-            datatype="DENetworkDataset",
+            datatype="GPNetworkDatasetLayer",
             parameterType="Required",
             direction="Input")
         
@@ -541,7 +563,7 @@ class AccessBatch(object):
         param5 = arcpy.Parameter(
             displayName="Origins",
             name="origins_i_input",
-            datatype="DEFeatureClass",
+            datatype="GPFeatureLayer",
             parameterType="Required",
             direction="Input")
         
@@ -561,92 +583,109 @@ class AccessBatch(object):
         param7.value = "5000 Meters"
         
         param8 = arcpy.Parameter(
-            displayName="Origins Network Search Query",
-            name="search_query_i",
+            displayName="Origins Network Search Criteria",
+            name="search_criteria_i",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
         param8.value = "None"
         
         param9 = arcpy.Parameter(
+            displayName="Origins Network Search Query",
+            name="search_query_i",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input")
+        param9.value = "None"
+        
+        param10 = arcpy.Parameter(
             displayName="Destinations",
             name="destinations_j_input",
-            datatype="DEFeatureClass",
+            datatype="GPFeatureLayer",
             parameterType="Required",
             direction="Input")
         
-        param10 = arcpy.Parameter(
+        param11 = arcpy.Parameter(
             displayName="Destinations ID Field",
             name="j_id",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
         
-        param11 = arcpy.Parameter(
+        param12 = arcpy.Parameter(
             displayName="Destination Opportunities Field",
             name="opportunities_j",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
  
-        param12 = arcpy.Parameter(
+        param13 = arcpy.Parameter(
             displayName="Destinations Network Search Tolerance",
             name="search_tolerance_j",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
-        param12.value = "5000 Meters"
+        param13.value = "5000 Meters"
         
-        param13 = arcpy.Parameter(
+        param14 = arcpy.Parameter(
+            displayName="Destinations Network Search Criteria",
+            name="search_criteria_j",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input")
+        param14.value = "None"
+        
+        param15 = arcpy.Parameter(
             displayName="Destinations Network Search Query",
             name="search_query_j",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
-        param13.value = "None"
+        param15.value = "None"
         
-        param14 = arcpy.Parameter(
+        param16 = arcpy.Parameter(
             displayName="Output Work Folder",
             name="output_dir",
             datatype="DEWorkspace",
             parameterType="Required",
             direction="Input")
-        param14.filter.list = ["File System"]
+        param16.filter.list = ["File System"]
         
-        param15 = arcpy.Parameter(
+        param17 = arcpy.Parameter(
             displayName="Name of Output Analysis Geodatabase",
             name="output_gdb",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
-        param15.value = "AccessCalc"
+        param17.value = "AccessCalc"
         
-        param16 = arcpy.Parameter(
+        param18 = arcpy.Parameter(
             displayName="Batch OD Matrix Size Factor",
             name="od_size_factor",
             datatype="GPLong",
             parameterType="Required",
             direction="Input")
-        param16.value = 10000000
+        param18.value = 10000000
         
-        param17 = arcpy.Parameter(
+        param19 = arcpy.Parameter(
             displayName="Delete OD lines where i equals j?",
             name="del_i_eq_j",
             datatype="GPBoolean",
             parameterType="Optional",
             direction="Input")
-        param17.value = False
+        param19.value = False
         
-        param18 = arcpy.Parameter(
+        param20 = arcpy.Parameter(
             displayName="Join output back to origins?",
             name="join_back_i",
             datatype="GPBoolean",
             parameterType="Optional",
             direction="Input")
-        param18.value = False
+        param20.value = False
         
         params = [param0, param1, param2, param3, param4, param5, param6, param7, param8,\
-                  param9, param10, param11, param12, param13, param14, param15, param16, param17, param18]
+                  param9, param10, param11, param12, param13, param14, param15, param16,\
+                  param17, param18, param19, param20]
         return params
     
     def isLicensed(self):
@@ -711,13 +750,13 @@ class AccessBatch(object):
         else:
             parameters[6].filter.list = []
         
-        if parameters[9].altered:
-            fields10 = [f.name for f in arcpy.ListFields(parameters[9].valueAsText)]
-            parameters[10].filter.list = fields10
-            parameters[11].filter.list = fields10
+        if parameters[10].altered:
+            fields11 = [f.name for f in arcpy.ListFields(parameters[10].valueAsText)]
+            parameters[11].filter.list = fields11
+            parameters[12].filter.list = fields11
         else:
-            parameters[10].filter.list = []
             parameters[11].filter.list = []
+            parameters[12].filter.list = []
         
         return
 
@@ -736,17 +775,19 @@ class AccessBatch(object):
         origins_i_input = parameters[5].valueAsText
         i_id = parameters[6].valueAsText
         search_tolerance_i = parameters[7].valueAsText
-        search_query_i = parameters[8].valueAsText
-        destinations_j_input = parameters[9].valueAsText
-        j_id = parameters[10].valueAsText
-        opportunities_j = parameters[11].valueAsText
-        search_tolerance_j = parameters[12].valueAsText
-        search_query_j = parameters[13].valueAsText
-        output_dir = parameters[14].valueAsText
-        output_gdb = parameters[15].valueAsText
-        od_size_factor = parameters[16].value
-        del_i_eq_j = parameters[17].valueAsText
-        join_back_i = parameters[18].valueAsText
+        search_criteria_i = parameters[8].valueAsText
+        search_query_i = parameters[9].valueAsText
+        destinations_j_input = parameters[10].valueAsText
+        j_id = parameters[11].valueAsText
+        opportunities_j = parameters[12].valueAsText
+        search_tolerance_j = parameters[13].valueAsText
+        search_criteria_j = parameters[14].valueAsText
+        search_query_j = parameters[15].valueAsText
+        output_dir = parameters[16].valueAsText
+        output_gdb = parameters[17].valueAsText
+        od_size_factor = parameters[18].value
+        del_i_eq_j = parameters[19].valueAsText
+        join_back_i = parameters[20].valueAsText
         layer_name = "Accessibility OD Matrix"
         origins_i_desc = arcpy.Describe(origins_i_input)
         origins_i_path = origins_i_desc.path
@@ -913,6 +954,7 @@ class AccessBatch(object):
         arcpy.na.AddLocations(layer_object, destinations_layer_name, destinations_j, 
                               field_mappings_j,
                               search_tolerance = search_tolerance_j,
+                              search_criteria = search_criteria_j,
                               append = "CLEAR",
                               exclude_restricted_elements = "EXCLUDE",
                               search_query = search_query_j)
@@ -941,6 +983,7 @@ class AccessBatch(object):
                 arcpy.na.AddLocations(layer_object, origins_layer_name, "temp_origins_i", 
                               field_mappings_i,
                               search_tolerance = search_tolerance_i,
+                              search_criteria = search_criteria_i,
                               append = "CLEAR",
                               exclude_restricted_elements = "EXCLUDE",
                               search_query = search_query_i)

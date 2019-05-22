@@ -28,16 +28,20 @@ The Accessibility Calculator has several inputs:
 - **Origins**: a feature class representing origin locations *i*; can be point or polygon
 - **Origins ID Field**: a unique identifier for your input origins; can be any type of field
 - *Origins Network Search Tolerance* (optional): the search tolerance for locating the input features on the network; features that are outside the search tolerance are left unlocated
-- *Origins Network Search Query* (optional): specifies a query to restrict the search to a subset of the features within a source feature class; useful if you don't want to find features that may be unsuited for a network location
+- *Origins Network Search Criteria* (optional): restricts the search to particular feature classes in your network dataset; useful if you don't want to find features that may be unsuited for a network location
+  - for example, if you have created a transit network using the [Add GTFS to Network Dataset](https://esri.github.io/public-transit-tools/AddGTFStoaNetworkDataset.html) tool and want your origins to locate on streets while avoiding other feature classes like transit lines, you could input the SQL expression (using default names for the GTFS tool) *[["Streets_UseThisOne","SHAPE"],["Stops","NONE"],["Stops_Snapped2Streets","NONE"],["Transit_Network_ND_Junctions","NONE"],["Connectors_Stops2Streets","NONE"],["TransitLines","NONE"]]*
+  - see the ArcGIS [Add Locations](https://pro.arcgis.com/en/pro-app/tool-reference/network-analyst/add-locations.htm) reference for more guidance and examples on setting a *search_criteria* parameter
+- *Origins Network Search Query* (optional): specifies a query to restrict the search to a subset of the features within a source feature class; useful if you don't want to locate on particular features
   - for example, if you do not want your input origins to locate on major highways, you could input the SQL expression *["Streets", ""FREEWAY" = 0"]*
   - in the example data, if you do not want origins to locate on tunnels or bridges, you could input the SQL expression *[["NYC_OSM_Walk", ""tunnel" <> 'yes'"], ["NYC_OSM_Walk", ""bridge" <> 'yes'"]]*
-  - see the ArcGIS [Add Locations](https://pro.arcgis.com/en/pro-app/tool-reference/network-analyst/add-locations.htm) reference for more guidance and examples on setting a *search_criteria* parameter
+  - see the ArcGIS [Add Locations](https://pro.arcgis.com/en/pro-app/tool-reference/network-analyst/add-locations.htm) reference for more guidance and examples on setting a *search_query* parameter
 
 *Destinations*
 - **Destinations**: a feature class representing destination locations *j*; can be point or polygon
 - **Destinations ID Field**: a unique identifier for your input destinations; can be any type of field
 - **Destination Opportunities Field**: a numeric field containing the opportunities *Oj* available at the destination, such as the number of jobs
 - *Destinations Network Search Tolerance* (optional): same notes as the *Origins Network Search Tolerance*
+- *Destinations Network Search Criteria* (optional): same notes as the *Origins Network Search Criteria*
 - *Destinations Network Search Query* (optional): same notes as the *Origins Network Search Query*
 
 *General Settings*
@@ -51,7 +55,7 @@ The Accessibility Calculator has several inputs:
 Using the interactive R Notebook, users can explore 5 impedance functions: 
 - inverse power
 - negative exponential
-- modified gaussian
+- modified Gaussian
 - cumulative opportunities rectangular
 - cumulative opportunities linear
 
@@ -73,7 +77,7 @@ p = {
 - *"f"*: the key *f* indexes the value of the impedance function for the impedance measure; in the case of *POW0_8*, the *"pow"* string refers to the inverse power function; for *CUMR10* the function is *"cumr"*. Available functions are:
   - *pow*: inverse power
   - *neg_exp*: negative exponential
-  - *mgaus*: modified gaussian
+  - *mgaus*: modified Gaussian
   - *cumr*: cumulative opportunities rectangular
   - *cuml*: cumulative opportunities linear
 - *"b0"*: the key *b0* indexes the value of the beta parameter for the impedance measure that will be input into the impedance function
