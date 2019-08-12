@@ -13,17 +13,17 @@ import os
 class Toolbox(object):
     def __init__(self):
         """Define the toolbox (the name of the toolbox is the name of the .pyt file)."""
-        self.label = "Accessibility Calculator 10x"
-        self.alias = "AccessibilityCalculator10x"
+        self.label = "Accessibility Calculator for Pro 2.4"
+        self.alias = "AccessibilityCalculatorforPro24"
 
         # List of tool classes associated with this toolbox
-        self.tools = [AccessCalc, AccessBatch]
+        self.tools = [AccessCalcPro2_4, AccessBatchPro2_4]
 
 ############### START OF ACCESS CALC TOOL ###############
 
-class AccessCalc(object):
+class AccessCalcPro2_4(object):
     def __init__(self):
-        self.label = "Accessibility Calculator"
+        self.label = "Accessibility Calculator for Pro 2.4"
         self.description = "Calculate place-based accessibility for origins"
         self.canRunInBackground = True
         self.category = "Accessibility Calculator"
@@ -40,8 +40,8 @@ class AccessCalc(object):
             direction="Input")
         
         param1 = arcpy.Parameter(
-            displayName="Impedance Attribute",
-            name="impedance_attribute",
+            displayName="Travel Mode",
+            name="travel_mode",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
@@ -56,10 +56,10 @@ class AccessCalc(object):
         param3 = arcpy.Parameter(
             displayName="Departure Time",
             name="time_of_day",
-            datatype="GPString",
-            parameterType="Required",
+            datatype="GPDate",
+            parameterType="Optional",
             direction="Input")
-        param3.value = "None"
+        param3.value = None
         
         param4 = arcpy.Parameter(
             displayName="Impedance Measure",
@@ -96,7 +96,7 @@ class AccessCalc(object):
             displayName="Origins Network Search Criteria",
             name="search_criteria_i",
             datatype="GPValueTable",
-            parameterType="Optional",
+            parameterType="Required",
             direction="Input")
         param8.value = None
         param8.columns = [['GPString', 'Network Source'], ['GPString', 'Snap Type']]
@@ -147,7 +147,7 @@ class AccessCalc(object):
             displayName="Destinations Network Search Criteria",
             name="search_criteria_j",
             datatype="GPValueTable",
-            parameterType="Optional",
+            parameterType="Required",
             direction="Input")
         param14.value = None
         param14.columns = [['GPString', 'Network Source'], ['GPString', 'Snap Type']]
@@ -189,18 +189,17 @@ class AccessCalc(object):
             direction="Input")
         param18.value = False
         
-        # join back i does not seem to work in ArcMap - joinfield returns general function error
-        #param19 = arcpy.Parameter(
-        #    displayName="Join output back to origins?",
-        #    name="join_back_i",
-        #    datatype="GPBoolean",
-        #    parameterType="Optional",
-        #    direction="Input")
-        #param19.value = False
+        param19 = arcpy.Parameter(
+            displayName="Join output back to origins?",
+            name="join_back_i",
+            datatype="GPBoolean",
+            parameterType="Optional",
+            direction="Input")
+        param19.value = False
         
         params = [param0, param1, param2, param3, param4, param5, param6, param7, param8,\
                   param9, param10, param11, param12, param13, param14, param15, param16,\
-                  param17, param18]
+                  param17, param18, param19]
         return params
     
     def isLicensed(self):
@@ -253,16 +252,17 @@ class AccessCalc(object):
         }
         
         if parameters[0].altered:
-            desc_nd = arcpy.Describe(parameters[0].valueAsText)
-            attributes = desc_nd.attributes
-            parameters[1].filter.list = list(attribute.name for attribute in attributes)
-            network_sources = desc_nd.sources
+            network_travel_modes = arcpy.nax.GetTravelModes(parameters[0].valueAsText)
+            fields1 = list(network_travel_modes)
+            parameters[1].filter.list = fields1
+            network_describe = arcpy.Describe(parameters[0].valueAsText)
+            network_sources = network_describe.sources
             network_source_features = [source.name for source in network_sources]
             parameters[8].filters[0].list = list(network_source_features)
             parameters[9].filters[0].list = list(network_source_features)
             parameters[14].filters[0].list = list(network_source_features)
             parameters[15].filters[0].list = list(network_source_features)
-            
+        
         fields4 = list(p)
         parameters[4].filter.list = fields4
         
@@ -288,10 +288,10 @@ class AccessCalc(object):
     def execute(self, parameters, messages):
         arcpy.CheckOutExtension("Network")
         
-        network = parameters[0].valueAsText
-        impedance_attribute = parameters[1].valueAsText
+        input_network = parameters[0].valueAsText
+        travel_mode = parameters[1].valueAsText
         cutoff = parameters[2].valueAsText
-        time_of_day = parameters[3].valueAsText
+        time_of_day = parameters[3].value
         impedance_list = parameters[4].valueAsText
         origins_i_input = parameters[5].valueAsText
         i_id = parameters[6].valueAsText
@@ -307,7 +307,7 @@ class AccessCalc(object):
         output_dir = parameters[16].valueAsText
         output_gdb = parameters[17].valueAsText
         del_i_eq_j = parameters[18].valueAsText
-        #join_back_i = parameters[19].valueAsText
+        join_back_i = parameters[19].valueAsText
         layer_name = "Accessibility OD Matrix"
         
         # split impedance function multivalue
@@ -373,165 +373,240 @@ class AccessCalc(object):
         
         arcpy.env.workspace = os.path.join(output_dir, output_gdb+".gdb")
         
-        # convert i to points if input is polyon
+        # create input features and convert to points if required
+        # field mappings for i_input
+        field_mappings_i_input = arcpy.FieldMappings()
+
+        # field maps for i_id
+        field_map_i_id = arcpy.FieldMap()
+        field_map_i_id.addInputField(origins_i_input, i_id)
+        field_i_id_output = field_map_i_id.outputField
+        field_i_id_output.name = "i_id"
+        field_map_i_id.outputField = field_i_id_output
+        field_mappings_i_input.addFieldMap(field_map_i_id)
+        
+        # convert i to points if input is polygon
         describe_i = arcpy.Describe(origins_i_input)
         if describe_i.ShapeType == "Polygon":
             arcpy.AddMessage("Converting Origins to points...")
-            origins_i = arcpy.management.FeatureToPoint(origins_i_input, "origins_i_point", "INSIDE")
+            arcpy.management.FeatureToPoint(origins_i_input, r"in_memory/origins_i_point", "INSIDE")
+            origins_i_point = r"in_memory/origins_i_point"
+            arcpy.conversion.FeatureClassToFeatureClass(origins_i_point, arcpy.env.workspace, 
+                                                        "origins_i", field_mapping = field_mappings_i_input)
         else:
-            origins_i = origins_i_input
+            arcpy.conversion.FeatureClassToFeatureClass(origins_i_input, arcpy.env.workspace, 
+                                                        "origins_i", field_mapping = field_mappings_i_input)
+        
+        origins_i = os.path.join(arcpy.env.workspace+"/origins_i")
+        
+        # add i_id_text to join with OriginsName in nax
+        arcpy.management.AddField(origins_i, "i_id_text", "TEXT")
+        arcpy.management.CalculateField(origins_i, "i_id_text", "!i_id!", "PYTHON3")
+        
+        # save attributes in memory for joining
+        arcpy.conversion.FeatureClassToFeatureClass(origins_i, r"in_memory", "origins_i_attr")
+        origins_i_attr = r"in_memory/origins_i_attr"
+        
+        # field mappings for j_input
+        field_mappings_j_input = arcpy.FieldMappings()
+
+        # field maps for j_id
+        field_map_j_id = arcpy.FieldMap()
+        field_map_j_id.addInputField(destinations_j_input, j_id)
+        field_j_id_output = field_map_j_id.outputField
+        field_j_id_output.name = "j_id"
+        field_map_j_id.outputField = field_j_id_output
+        field_mappings_j_input.addFieldMap(field_map_j_id)
+
+        # field maps for o_j
+        field_map_o_j = arcpy.FieldMap()
+        field_map_o_j.addInputField(destinations_j_input, opportunities_j)
+        field_o_j_output = field_map_o_j.outputField
+        field_o_j_output.name = "o_j"
+        field_map_o_j.outputField = field_o_j_output
+        field_mappings_j_input.addFieldMap(field_map_o_j)
         
         # convert j to points if input is polygon
         describe_j = arcpy.Describe(destinations_j_input)
         if describe_j.ShapeType == "Polygon":
             arcpy.AddMessage("Converting Destinations to points...")
-            destinations_j = arcpy.management.FeatureToPoint(destinations_j_input, "destinations_j_point", "INSIDE")
+            arcpy.management.FeatureToPoint(destinations_j_input, r"in_memory/destinations_j_point", "INSIDE")
+            destinations_j_point = r"in_memory/destinations_j_point"
+            arcpy.conversion.FeatureClassToFeatureClass(destinations_j_point, arcpy.env.workspace, 
+                                                        "destinations_j", field_mapping = field_mappings_j_input)
         else:
-            destinations_j = destinations_j_input
+            arcpy.conversion.FeatureClassToFeatureClass(destinations_j_input, arcpy.env.workspace, 
+                                                        "destinations_j", field_mapping = field_mappings_j_input)
         
-        # create od matrix
+        destinations_j = os.path.join(arcpy.env.workspace+"/destinations_j")
+        
+        # add j_id_text to join with DestinationsName in nax
+        arcpy.management.AddField(destinations_j, "j_id_text", "TEXT")
+        arcpy.management.CalculateField(destinations_j, "j_id_text", "!j_id!", "PYTHON3")
+        
+        # save attributes in memory for joining
+        arcpy.conversion.FeatureClassToFeatureClass(destinations_j, r"in_memory", "destinations_j_attr")
+        destinations_j_attr = r"in_memory/destinations_j_attr"
+        
+        # create od matrix with nax
+        network_layer = "network_layer"
         arcpy.AddMessage("Creating Accessibility OD Cost Matrix...")
-        if time_of_day != "None":
-            arcpy.AddMessage("Departure time is "+time_of_day)
-            result_object = arcpy.na.MakeODCostMatrixLayer(network, layer_name, 
-                                               impedance_attribute = impedance_attribute, 
-                                               default_cutoff = cutoff, 
-                                               default_number_destinations_to_find = None,
-                                               accumulate_attribute_name = None,
-                                               output_path_shape = "NO_LINES",
-                                               time_of_day = time_of_day)
-            layer_object = result_object.getOutput(0)
-            
+        arcpy.nax.MakeNetworkDatasetLayer(input_network, network_layer)
+        odcm = arcpy.nax.OriginDestinationCostMatrix(network_layer)
+        
+        if time_of_day != None:
+            arcpy.AddMessage("Departure time is "+str(time_of_day))
+            # set nax network_layer properties
+            odcm.travelMode = travel_mode
+            odcm.timeUnits = arcpy.nax.TimeUnits.Minutes
+            odcm.defaultImpedanceCutoff = cutoff
+            odcm.lineShapeType = arcpy.nax.LineShapeType.NoLine
+            odcm.timeOfDay = time_of_day
+        
         else:
-            result_object = arcpy.na.MakeODCostMatrixLayer(network, layer_name, 
-                                               impedance_attribute = impedance_attribute, 
-                                               default_cutoff = cutoff, 
-                                               default_number_destinations_to_find = None,
-                                               accumulate_attribute_name = None,
-                                               output_path_shape = "NO_LINES",
-                                               time_of_day = None)
-            layer_object = result_object.getOutput(0)
+            # set nax network_layer properties
+            odcm.travelMode = travel_mode
+            odcm.timeUnits = arcpy.nax.TimeUnits.Minutes
+            odcm.defaultImpedanceCutoff = cutoff
+            odcm.lineShapeType = arcpy.nax.LineShapeType.NoLine
+            odcm.timeOfDay = None
         
-        # get layer names
-        sublayer_names = arcpy.na.GetNAClassNames(layer_object)
-        origins_layer_name = sublayer_names["Origins"]
-        destinations_layer_name = sublayer_names["Destinations"]
-        
-        # field mappings i
-        arcpy.na.AddFieldToAnalysisLayer(layer_object, origins_layer_name, "i_id", i_id_type)
-        field_mappings_i = arcpy.na.NAClassFieldMappings(layer_object, origins_layer_name)
-        field_mappings_i["Name"].mappedFieldName = i_id
-        field_mappings_i["i_id"].mappedFieldName = i_id
+        # add origins
         arcpy.AddMessage("Adding Origins...")
-        arcpy.na.AddLocations(layer_object, origins_layer_name, origins_i, 
-                              field_mappings_i,
-                              search_tolerance = search_tolerance_i,
-                              search_criteria = search_criteria_i,
-                              append = "CLEAR",
-                              exclude_restricted_elements = "EXCLUDE",
-                              search_query = search_query_i,
-                              snap_to_position_along_network = 'SNAP')
         
-        # field mappings j
-        arcpy.na.AddFieldToAnalysisLayer(layer_object, destinations_layer_name, "j_id", j_id_type)
-        arcpy.na.AddFieldToAnalysisLayer(layer_object, destinations_layer_name, "o_j", opportunities_j_type)
-        field_mappings_j = arcpy.na.NAClassFieldMappings(layer_object, destinations_layer_name)
-        field_mappings_j["Name"].mappedFieldName = j_id
-        field_mappings_j["j_id"].mappedFieldName = j_id
-        field_mappings_j["o_j"].mappedFieldName = opportunities_j
+        # 1: calculate origin locations
+        arcpy.nax.CalculateLocations(origins_i, input_network, 
+                                     search_tolerance = search_tolerance_i, 
+                                     search_criteria = search_criteria_i, 
+                                     search_query = search_query_i,
+                                     travel_mode = travel_mode,
+                                     exclude_restricted_elements = "EXCLUDE")
+        
+        # 2: map i_id field
+        candidate_fields_i = arcpy.ListFields(origins_i)
+        field_mappings_i = odcm.fieldMappings(arcpy.nax.OriginDestinationCostMatrixInputDataType.Origins, 
+                                              True, candidate_fields_i)
+        field_mappings_i["Name"].mappedFieldName = "i_id"
+        
+        # 3: load origins
+        odcm.load(arcpy.nax.OriginDestinationCostMatrixInputDataType.Origins, 
+                  features = origins_i, 
+                  field_mappings = field_mappings_i,
+                  append = False)
+        
+        # add destinations
         arcpy.AddMessage("Adding Destinations...")
-        arcpy.na.AddLocations(layer_object, destinations_layer_name, destinations_j, 
-                              field_mappings_j,
-                              search_tolerance = search_tolerance_j,
-                              search_criteria = search_criteria_j,
-                              append = "CLEAR",
-                              exclude_restricted_elements = "EXCLUDE",
-                              search_query = search_query_j,
-                              snap_to_position_along_network = 'SNAP')
+        
+        # 1: calculate origin locations
+        arcpy.nax.CalculateLocations(destinations_j, input_network, 
+                                     search_tolerance = search_tolerance_j, 
+                                     search_criteria = search_criteria_j, 
+                                     search_query = search_query_i,
+                                     travel_mode = travel_mode,
+                                     exclude_restricted_elements = "EXCLUDE")
+        
+        # 2: map j_id field
+        candidate_fields_j = arcpy.ListFields(destinations_j)
+        field_mappings_j_nax = odcm.fieldMappings(arcpy.nax.OriginDestinationCostMatrixInputDataType.Destinations,
+                                                  True, candidate_fields_j)
+        field_mappings_j_nax["Name"].mappedFieldName = "j_id"
+        
+        # 3: load destinations
+        odcm.load(arcpy.nax.OriginDestinationCostMatrixInputDataType.Destinations, 
+                  features = destinations_j, 
+                  field_mappings = field_mappings_j_nax,
+                  append = False)
         
         # solve
         arcpy.AddMessage("Solving OD Matrix...")
-        arcpy.na.Solve(in_network_analysis_layer = layer_object, terminate_on_solve_error = "CONTINUE")
+        result = odcm.solve()
         
-        # get sublayer names
-        sub_layers = dict((lyr.datasetName, lyr) for lyr in arcpy.mapping.ListLayers(layer_object)[1:])
-        origins_sublayer = sub_layers["Origins"]
-        destinations_sublayer = sub_layers["Destinations"]
-        lines_sublayer = sub_layers["ODLines"]
-        solver_props = arcpy.na.GetSolverProperties(layer_object)
+        # Export the results to a feature class
+        if result.solveSucceeded:
+            result.export(arcpy.nax.OriginDestinationCostMatrixOutputDataType.Lines, r"in_memory/od_lines")
+        else:
+            print("Solved failed")
+            print(result.solverMessages(arcpy.nax.MessageSeverity.All))
         
-        # get impedance and accumulator field names
-        impedance = solver_props.impedance
-        total_impedance_fieldname = "Total_" + impedance
+        od_lines = arcpy.management.MakeFeatureLayer(r"in_memory/od_lines", "od_lines")
         
         # add join to transfer origin and destination IDs from the OD Cost Matrix to the lines sublayer
         arcpy.AddMessage("Joining attributes...")
-        arcpy.management.AddJoin(lines_sublayer, "OriginID", origins_sublayer, "ObjectID")
-        arcpy.management.AddJoin(lines_sublayer, "DestinationID", destinations_sublayer, "ObjectID")
-        od_lines_joined = arcpy.conversion.TableToTable(lines_sublayer, arcpy.env.workspace, "od_lines_joined")
-        arcpy.management.RemoveJoin(lines_sublayer)
+        arcpy.management.AddJoin(od_lines, "OriginName", origins_i_attr, "i_id_text")
+        arcpy.management.AddJoin(od_lines, "DestinationName", destinations_j_attr, "j_id_text")
+        od_lines_joined = arcpy.conversion.FeatureClassToFeatureClass(od_lines, r"in_memory", "od_lines_joined")
+        arcpy.management.RemoveJoin(od_lines)
+        arcpy.management.RemoveJoin(od_lines)
         
         # delete rows where i = j
-        od_lines_view = arcpy.management.MakeTableView(od_lines_joined, "od_lines_joined_view")
         if del_i_eq_j == "true":
             if origins_i_input == destinations_j_input:
                 if i_id == j_id:
-                    arcpy.AddMessage("Deleting lines where i = j...")
-                    arcpy.management.SelectLayerByAttribute(od_lines_view, "NEW_SELECTION", "Origins_i_id = Destinations_j_id")
-                    if int(arcpy.management.GetCount(od_lines_view)[0]) > 0:
-                        arcpy.management.DeleteRows(od_lines_view)
+                    #arcpy.AddMessage("Deleting lines where i = j...")
+                    #od_lines_view = arcpy.management.MakeTableView(od_lines_joined, "od_lines_joined_view")
+                    arcpy.management.MakeFeatureLayer(od_lines_joined, "od_lines_view")
+                    arcpy.management.SelectLayerByAttribute("od_lines_view", "NEW_SELECTION", "i_id <> j_id")
+                    arcpy.management.SelectLayerByAttribute("od_lines_view", "SWITCH_SELECTION")
+                    #arcpy.management.SelectLayerByAttribute(od_lines_view, "NEW_SELECTION", "OriginName = DestinationName")
+                    if int(arcpy.management.GetCount("od_lines_view").getOutput(0)) > 0:
+                        arcpy.AddMessage("Deleting "+str(int(arcpy.management.GetCount("od_lines_view")[0]))+" lines where i = j...")
+                        arcpy.management.DeleteRows("od_lines_view")
                 else:
                     arcpy.AddMessage("Can't delete where i = j: inputs don't match")
             else:
                 arcpy.AddMessage("Can't delete where i = j: inputs don't match")
         
         # impedance functions
-        o_j = '!Destinations_o_j!'
+        o_j = '!o_j!'
+        total_impedance_fieldname = "Total_Time"
         t_ij = '!'+total_impedance_fieldname+'!'
         
         # loop over selected impedance functions list
         for i in selected_impedance_function:
             f_name = i
             arcpy.AddMessage("Calculating accessibility using impedance function "+f_name+"...")
-            
+            arcpy.management.AddField(od_lines_joined, "Ai_"+f_name, "DOUBLE")
             # define dictionary of functions with calls to parameters dictionary p
             func = {
-                "pow": "(1 if %s<1 else (%s**-%s))" % (t_ij, t_ij, p[f_name]["b0"]),
-                "neg_exp": "(math.exp(-%s*%s))" % (t_ij, p[f_name]["b0"]),
-                "mgaus": "(math.exp(-%s**2/%s))" % (t_ij, p[f_name]["b0"]),
-                "cumr": "(1 if %s<=%s else 0)" % (t_ij, p[f_name]["t_bar"]),
-                "cuml": "(1-%s/%s if %s<=%s else 0)" % (t_ij, p[f_name]["t_bar"], t_ij, p[f_name]["t_bar"])
+                "pow": "(1 if {}<1 else ({}**-{}))".format(t_ij, t_ij, p[f_name]["b0"]),
+                "neg_exp": "(math.exp(-{}*{}))".format(t_ij, p[f_name]["b0"]),
+                "mgaus": "(math.exp(-{}**2/{}))".format(t_ij, p[f_name]["b0"]),
+                "cumr": "(1 if {}<={} else 0)".format(t_ij, p[f_name]["t_bar"]),
+                "cuml": "(1-{}/{} if {}<={} else 0)".format(t_ij, p[f_name]["t_bar"], t_ij, p[f_name]["t_bar"])
             }
             
             impedance_f = func[p[f_name]["f"]]
-            arcpy.management.AddField(od_lines_joined, "Ai_"+f_name, "DOUBLE")
-            arcpy.management.CalculateField(od_lines_joined, "Ai_"+f_name, "%s*%s" % (o_j, impedance_f), "PYTHON", None)
+            arcpy.management.CalculateField(od_lines_joined, "Ai_"+f_name, "{}*{}".format(o_j, impedance_f), "PYTHON3", None)
         
         # calcualte summary statistics
         arcpy.AddMessage("Summarizing accessibility...")
         sum_fields = ["Ai_"+f_field+" SUM" for f_field in selected_impedance_function]
         sum_fields_str = ";".join(sum_fields)
-        output_table = arcpy.analysis.Statistics(od_lines_joined,
-                                  arcpy.env.workspace+"\\output_"+output_gdb,
-                                  sum_fields_str,
-                                  "Origins_i_id")
+        output_table = arcpy.analysis.Statistics(od_lines_joined, arcpy.env.workspace+"\\output_"+output_gdb, sum_fields_str, "i_id")
         
-        # join back i does not seem to work in ArcMap - joinfield returns general function error
-        #if join_back_i == "true":
-        #    # join accessibility output back to origins input
-        #    join_fields = [str("SUM_Ai_"+f_field) for f_field in selected_impedance_function]
-        #    join_fields.insert(0, "FREQUENCY")
-        #    arcpy.AddMessage("Joining accessibility output to "+str(join_fields)+" input i...")
-        #    arcpy.management.JoinField(origins_i_input, i_id, output_table, "Origins_i_id", join_fields)
+        if join_back_i == "true":
+            # join accessibility output back to origins input
+            join_fields = ["SUM_Ai_"+f_field for f_field in selected_impedance_function]
+            join_fields.insert(0, "FREQUENCY")
+            arcpy.AddMessage("Joining accessibility output to input i...")
+            arcpy.management.JoinField(origins_i_input, i_id, output_table, "i_id", join_fields)
+        
+        # clean up
+        arcpy.management.Delete(r"in_memory/origins_i_point")
+        arcpy.management.Delete(r"in_memory/origins_i")
+        arcpy.management.Delete(r"in_memory/origins_i_attr")
+        arcpy.management.Delete(r"in_memory/destinations_j_point")
+        arcpy.management.Delete(r"in_memory/destinations_j")
+        arcpy.management.Delete(r"in_memory/destinations_j_attr")
         
         arcpy.AddMessage("Finished accessibility calculation")
         return
-
+    
 ############### START OF ACCESS BATCH TOOL ###############
 
-class AccessBatch(object):
+class AccessBatchPro2_4(object):
     def __init__(self):
-        self.label = "Batch Accessibility Calculator"
+        self.label = "Batch Accessibility Calculator for Pro 2.4"
         self.description = "Batch calculate place-based accessibility for a large number of origins"
         self.canRunInBackground = True
         self.category = "Accessibility Calculator"
@@ -548,8 +623,8 @@ class AccessBatch(object):
             direction="Input")
         
         param1 = arcpy.Parameter(
-            displayName="Impedance Attribute",
-            name="impedance_attribute",
+            displayName="Travel Mode",
+            name="travel_mode",
             datatype="GPString",
             parameterType="Required",
             direction="Input")
@@ -564,10 +639,10 @@ class AccessBatch(object):
         param3 = arcpy.Parameter(
             displayName="Departure Time",
             name="time_of_day",
-            datatype="GPString",
-            parameterType="Required",
+            datatype="GPDate",
+            parameterType="Optional",
             direction="Input")
-        param3.value = "None"
+        param3.value = None
         
         param4 = arcpy.Parameter(
             displayName="Impedance Measure",
@@ -604,7 +679,7 @@ class AccessBatch(object):
             displayName="Origins Network Search Criteria",
             name="search_criteria_i",
             datatype="GPValueTable",
-            parameterType="Optional",
+            parameterType="Required",
             direction="Input")
         param8.value = None
         param8.columns = [['GPString', 'Network Source'], ['GPString', 'Snap Type']]
@@ -655,7 +730,7 @@ class AccessBatch(object):
             displayName="Destinations Network Search Criteria",
             name="search_criteria_j",
             datatype="GPValueTable",
-            parameterType="Optional",
+            parameterType="Required",
             direction="Input")
         param14.value = None
         param14.columns = [['GPString', 'Network Source'], ['GPString', 'Snap Type']]
@@ -705,18 +780,17 @@ class AccessBatch(object):
             direction="Input")
         param19.value = False
         
-        # join back i does not seem to work in ArcMap - joinfield returns general function error
-        #param20 = arcpy.Parameter(
-        #    displayName="Join output back to origins?",
-        #    name="join_back_i",
-        #    datatype="GPBoolean",
-        #    parameterType="Optional",
-        #    direction="Input")
-        #param20.value = False
+        param20 = arcpy.Parameter(
+            displayName="Join output back to origins?",
+            name="join_back_i",
+            datatype="GPBoolean",
+            parameterType="Optional",
+            direction="Input")
+        param20.value = False
         
         params = [param0, param1, param2, param3, param4, param5, param6, param7, param8,\
                   param9, param10, param11, param12, param13, param14, param15, param16,\
-                  param17, param18, param19]
+                  param17, param18, param19, param20]
         return params
     
     def isLicensed(self):
@@ -771,10 +845,11 @@ class AccessBatch(object):
         parameters[4].filter.list = fields4
         
         if parameters[0].altered:
-            desc_nd = arcpy.Describe(parameters[0].valueAsText)
-            attributes = desc_nd.attributes
-            parameters[1].filter.list = list(attribute.name for attribute in attributes)
-            network_sources = desc_nd.sources
+            network_travel_modes = arcpy.nax.GetTravelModes(parameters[0].valueAsText)
+            fields1 = list(network_travel_modes)
+            parameters[1].filter.list = fields1
+            network_describe = arcpy.Describe(parameters[0].valueAsText)
+            network_sources = network_describe.sources
             network_source_features = [source.name for source in network_sources]
             parameters[8].filters[0].list = list(network_source_features)
             parameters[9].filters[0].list = list(network_source_features)
@@ -804,10 +879,10 @@ class AccessBatch(object):
         arcpy.CheckOutExtension("Network")
         
         global p
-        network = parameters[0].valueAsText
-        impedance_attribute = parameters[1].valueAsText
+        input_network = parameters[0].valueAsText
+        travel_mode = parameters[1].valueAsText
         cutoff = parameters[2].valueAsText
-        time_of_day = parameters[3].valueAsText
+        time_of_day = parameters[3].value
         impedance_list = parameters[4].valueAsText
         origins_i_input = parameters[5].valueAsText
         i_id = parameters[6].valueAsText
@@ -824,7 +899,7 @@ class AccessBatch(object):
         output_gdb = parameters[17].valueAsText
         od_size_factor = parameters[18].value
         del_i_eq_j = parameters[19].valueAsText
-        #join_back_i = parameters[20].valueAsText
+        join_back_i = parameters[20].valueAsText
         layer_name = "Accessibility OD Matrix"
         
         # split impedance function multivalue
@@ -890,53 +965,87 @@ class AccessBatch(object):
         
         arcpy.env.workspace = os.path.join(output_dir, output_gdb+".gdb")
         
+        # create input features and convert to points if required
+        # field mappings for i_input
+        field_mappings_i_input = arcpy.FieldMappings()
+
+        # field maps for i_id
+        field_map_i_id = arcpy.FieldMap()
+        field_map_i_id.addInputField(origins_i_input, i_id)
+        field_i_id_output = field_map_i_id.outputField
+        field_i_id_output.name = "i_id"
+        field_map_i_id.outputField = field_i_id_output
+        field_mappings_i_input.addFieldMap(field_map_i_id)
+        
         # convert i to points if input is polyon
         describe_i = arcpy.Describe(origins_i_input)
         if describe_i.ShapeType == "Polygon":
             arcpy.AddMessage("Converting Origins to points...")
-            origins_i = arcpy.management.FeatureToPoint(origins_i_input, "origins_i_point", "INSIDE")
-            arcpy.management.AddField(origins_i, "seq_id", "LONG")
-            arcpy.management.CalculateField(origins_i, "seq_id", "autoIncrement()", "PYTHON", r"rec=0 \ndef autoIncrement(): \n global rec \n pStart = 1  \n pInterval = 1 \n if (rec == 0):  \n  rec = pStart  \n else:  \n  rec += pInterval  \n return rec")
+            arcpy.management.FeatureToPoint(origins_i_input, r"in_memory/origins_i_point", "INSIDE")
+            origins_i_point = r"in_memory\origins_i_point"
+            arcpy.conversion.FeatureClassToFeatureClass(origins_i_point, arcpy.env.workspace, 
+                                                        "origins_i", field_mapping = field_mappings_i_input)
         else:
-            origins_i = arcpy.management.CopyFeatures(origins_i_input, "origins_i_point")
-            arcpy.management.AddField(origins_i, "seq_id", "LONG")
-            arcpy.management.CalculateField(origins_i, "seq_id", "autoIncrement()", "PYTHON", r"rec=0 \ndef autoIncrement(): \n global rec \n pStart = 1  \n pInterval = 1 \n if (rec == 0):  \n  rec = pStart  \n else:  \n  rec += pInterval  \n return rec")
+            arcpy.conversion.FeatureClassToFeatureClass(origins_i_input, arcpy.env.workspace, 
+                                                        "origins_i", field_mapping = field_mappings_i_input)
+        
+        # assign variable
+        origins_i = os.path.join(arcpy.env.workspace+"/origins_i")
+        
+        # add i_id_text to join with OriginsName in nax
+        arcpy.management.AddField(origins_i, "i_id_text", "TEXT")
+        arcpy.management.CalculateField(origins_i, "i_id_text", "!i_id!", "PYTHON3")
+        
+        # save attributes in memory for joining
+        arcpy.conversion.FeatureClassToFeatureClass(origins_i, r"in_memory", "origins_i_attr")
+        origins_i_attr = r"in_memory/origins_i_attr"
+        
+        # create new sequential id for creating raster
+        arcpy.management.AddField(origins_i, "seq_id", "LONG")
+        arcpy.management.CalculateField(origins_i, "seq_id", "autoIncrement()", "PYTHON3", "rec=0\ndef autoIncrement():\n    global rec\n    pStart    = 1 \n    pInterval = 1 \n " +
+    "   if (rec == 0): \n        rec = pStart \n    else: \n        rec += pInterval \n  " +
+    "  return rec")
+        
+        # field mappings for j_input
+        field_mappings_j_input = arcpy.FieldMappings()
+
+        # field maps for j_id
+        field_map_j_id = arcpy.FieldMap()
+        field_map_j_id.addInputField(destinations_j_input, j_id)
+        field_j_id_output = field_map_j_id.outputField
+        field_j_id_output.name = "j_id"
+        field_map_j_id.outputField = field_j_id_output
+        field_mappings_j_input.addFieldMap(field_map_j_id)
+
+        # field maps for o_j
+        field_map_o_j = arcpy.FieldMap()
+        field_map_o_j.addInputField(destinations_j_input, opportunities_j)
+        field_o_j_output = field_map_o_j.outputField
+        field_o_j_output.name = "o_j"
+        field_map_o_j.outputField = field_o_j_output
+        field_mappings_j_input.addFieldMap(field_map_o_j)
         
         # convert j to points if input is polygon
         describe_j = arcpy.Describe(destinations_j_input)
         if describe_j.ShapeType == "Polygon":
             arcpy.AddMessage("Converting Destinations to points...")
-            destinations_j = arcpy.management.FeatureToPoint(destinations_j_input, "destinations_j_point", "INSIDE")
+            arcpy.management.FeatureToPoint(destinations_j_input, r"in_memory/destinations_j_point", "INSIDE")
+            destinations_j_point = r"in_memory\destinations_j_point"
+            arcpy.conversion.FeatureClassToFeatureClass(destinations_j_point, arcpy.env.workspace, 
+                                                        "destinations_j", field_mapping = field_mappings_j_input)
         else:
-            destinations_j = destinations_j_input
+            arcpy.conversion.FeatureClassToFeatureClass(destinations_j_input, arcpy.env.workspace, 
+                                                        "destinations_j", field_mapping = field_mappings_j_input)
         
-        # create od matrix
-        arcpy.AddMessage("Creating Accessibility OD Cost Matrix...")
-        if time_of_day != "None":
-            arcpy.AddMessage("Departure time is "+time_of_day)
-            result_object = arcpy.na.MakeODCostMatrixLayer(network, layer_name, 
-                                               impedance_attribute = impedance_attribute, 
-                                               default_cutoff = cutoff, 
-                                               default_number_destinations_to_find = None,
-                                               accumulate_attribute_name = None,
-                                               output_path_shape = "NO_LINES",
-                                               time_of_day = time_of_day)
-            layer_object = result_object.getOutput(0)
+        destinations_j = os.path.join(arcpy.env.workspace+"/destinations_j")
         
-        else:
-            result_object = arcpy.na.MakeODCostMatrixLayer(network, layer_name, 
-                                               impedance_attribute = impedance_attribute, 
-                                               default_cutoff = cutoff, 
-                                               default_number_destinations_to_find = None,
-                                               accumulate_attribute_name = None,
-                                               output_path_shape = "NO_LINES",
-                                               time_of_day = None)
-            layer_object = result_object.getOutput(0)
+        # add j_id_text to join with DestinationsName in nax
+        arcpy.management.AddField(destinations_j, "j_id_text", "TEXT")
+        arcpy.management.CalculateField(destinations_j, "j_id_text", "!j_id!", "PYTHON3")
         
-        # get layer names
-        sublayer_names = arcpy.na.GetNAClassNames(layer_object)
-        origins_layer_name = sublayer_names["Origins"]
-        destinations_layer_name = sublayer_names["Destinations"]
+        # save attributes in memory for joining
+        arcpy.conversion.FeatureClassToFeatureClass(destinations_j, r"in_memory", "destinations_j_attr")
+        destinations_j_attr = r"in_memory/destinations_j_attr"
         
         # set size of batch raster and polygon
         origins_i_count = int(arcpy.management.GetCount(origins_i).getOutput(0))
@@ -950,7 +1059,7 @@ class AccessBatch(object):
         arcpy.AddMessage("Constructing raster from input points...")
         raster = arcpy.PointToRaster_conversion(in_features = origins_i,
                                        value_field = "seq_id",
-                                       out_rasterdataset = arcpy.env.workspace+"\\raster",
+                                       out_rasterdataset = r"in_memory/raster",
                                        cell_assignment = "MOST_FREQUENT",
                                        priority_field = "NONE",
                                        cellsize= raster_cell_size)
@@ -958,14 +1067,14 @@ class AccessBatch(object):
         # convert raster to polygon
         arcpy.AddMessage("Converting raster to batch polygon...")
         polygons = arcpy.conversion.RasterToPolygon(in_raster = raster,
-                                         out_polygon_features = arcpy.env.workspace+"\\polygons",
+                                         out_polygon_features = r"in_memory/polygons",
                                          simplify = "NO_SIMPLIFY",
                                          raster_field= "Value")
         polygon_count = int(arcpy.management.GetCount(polygons).getOutput(0))
         
         # create empty table for results
         output_table = arcpy.management.CreateTable(arcpy.env.workspace, "output_"+output_gdb)
-        arcpy.management.AddField(output_table, "Origins_i_id", i_id_type)
+        arcpy.management.AddField(output_table, "i_id", i_id_type)
         arcpy.management.AddField(output_table, "FREQUENCY", "LONG")
         
         # add selected impedance function names to output table by
@@ -975,30 +1084,66 @@ class AccessBatch(object):
             arcpy.AddMessage("Calculating accessibility using impedance function "+f_name+"...")
             arcpy.management.AddField(output_table, "SUM_Ai_"+f_name, "DOUBLE")
         
-        # create empty table for od lines
-        od_lines_joined = arcpy.management.CreateTable(arcpy.env.workspace, "od_lines_joined")
+        # create od matrix with nax
+        network_layer = "network_layer"
+        arcpy.AddMessage("Creating Accessibility OD Cost Matrix...")
+        arcpy.nax.MakeNetworkDatasetLayer(input_network, network_layer)
+        odcm = arcpy.nax.OriginDestinationCostMatrix(network_layer)
         
-        # field mappings j
-        arcpy.na.AddFieldToAnalysisLayer(layer_object, destinations_layer_name, "j_id", j_id_type)
-        arcpy.na.AddFieldToAnalysisLayer(layer_object, destinations_layer_name, "o_j", opportunities_j_type)
-        field_mappings_j = arcpy.na.NAClassFieldMappings(layer_object, destinations_layer_name)
-        field_mappings_j["Name"].mappedFieldName = j_id
-        field_mappings_j["j_id"].mappedFieldName = j_id
-        field_mappings_j["o_j"].mappedFieldName = opportunities_j
+        if time_of_day != None:
+            arcpy.AddMessage("Departure time is "+str(time_of_day))
+            # set nax network_layer properties
+            odcm.travelMode = travel_mode
+            odcm.timeUnits = arcpy.nax.TimeUnits.Minutes
+            odcm.defaultImpedanceCutoff = cutoff
+            odcm.lineShapeType = arcpy.nax.LineShapeType.NoLine
+            odcm.timeOfDay = time_of_day
+        
+        else:
+            # set nax network_layer properties
+            odcm.travelMode = travel_mode
+            odcm.timeUnits = arcpy.nax.TimeUnits.Minutes
+            odcm.defaultImpedanceCutoff = cutoff
+            odcm.lineShapeType = arcpy.nax.LineShapeType.NoLine
+            odcm.timeOfDay = None
+        
+        # calculate origin locations
+        arcpy.AddMessage("Adding Origins...")
+        arcpy.nax.CalculateLocations(origins_i, input_network, 
+                                     search_tolerance = search_tolerance_i, 
+                                     search_criteria = search_criteria_i, 
+                                     search_query = search_query_i,
+                                     travel_mode = travel_mode,
+                                     exclude_restricted_elements = "EXCLUDE")
+
+        # 2: map i_id field
+        candidate_fields_i = arcpy.ListFields(origins_i)
+        field_mappings_i = odcm.fieldMappings(arcpy.nax.OriginDestinationCostMatrixInputDataType.Origins, 
+                                              True, candidate_fields_i)
+        field_mappings_i["Name"].mappedFieldName = "i_id"
+        
+        # add destinations
         arcpy.AddMessage("Adding Destinations...")
-        arcpy.na.AddLocations(layer_object, destinations_layer_name, destinations_j, 
-                              field_mappings_j,
-                              search_tolerance = search_tolerance_j,
-                              search_criteria = search_criteria_j,
-                              append = "CLEAR",
-                              exclude_restricted_elements = "EXCLUDE",
-                              search_query = search_query_j)
         
-        # field mappings i
-        arcpy.na.AddFieldToAnalysisLayer(layer_object, origins_layer_name, "i_id", i_id_type)
-        field_mappings_i = arcpy.na.NAClassFieldMappings(layer_object, origins_layer_name)
-        field_mappings_i["Name"].mappedFieldName = i_id
-        field_mappings_i["i_id"].mappedFieldName = i_id
+        # 1: calculate destination locations
+        arcpy.nax.CalculateLocations(destinations_j, input_network, 
+                                     search_tolerance = search_tolerance_j, 
+                                     search_criteria = search_criteria_j, 
+                                     search_query = search_query_i,
+                                     travel_mode = travel_mode,
+                                     exclude_restricted_elements = "EXCLUDE")
+        
+        # 2: map j_id field
+        candidate_fields_j = arcpy.ListFields(destinations_j)
+        field_mappings_j_nax = odcm.fieldMappings(arcpy.nax.OriginDestinationCostMatrixInputDataType.Destinations,
+                                                  True, candidate_fields_j)
+        field_mappings_j_nax["Name"].mappedFieldName = "j_id"
+        
+        # 3: load destinations
+        odcm.load(arcpy.nax.OriginDestinationCostMatrixInputDataType.Destinations, 
+                  features = destinations_j, 
+                  field_mappings = field_mappings_j_nax,
+                  append = False)
         
         # create feature layer for input points i
         arcpy.management.MakeFeatureLayer(origins_i, "temp_origins_i")
@@ -1012,100 +1157,112 @@ class AccessBatch(object):
                                                    row[1],
                                                    None,
                                                    "NEW_SELECTION")
+                arcpy.conversion.FeatureClassToFeatureClass("temp_origins_i", r"in_memory", 
+                                                        "temp_origins_"+str(row_id))
                 
-                # add locations i
-                arcpy.AddMessage("Adding Origins for batch "+str(row_id)+" of "+str(polygon_count)+"...")
-                arcpy.na.AddLocations(layer_object, origins_layer_name, "temp_origins_i", 
-                              field_mappings_i,
-                              search_tolerance = search_tolerance_i,
-                              search_criteria = search_criteria_i,
-                              append = "CLEAR",
-                              exclude_restricted_elements = "EXCLUDE",
-                              search_query = search_query_i)
+                temp_origins_i = r"in_memory/temp_origins_"+str(row_id)
+                
+                # add origins
+                arcpy.AddMessage("Loading Origins for batch "+str(row_id)+" of "+str(polygon_count)+"...")
+                odcm.load(arcpy.nax.OriginDestinationCostMatrixInputDataType.Origins, 
+                          features = temp_origins_i, 
+                          field_mappings = field_mappings_i,
+                          append = False)
                 
                 # solve
                 arcpy.AddMessage("Solving OD Matrix...")
-                arcpy.na.Solve(in_network_analysis_layer = layer_object, terminate_on_solve_error = "CONTINUE")
+                result = odcm.solve()
                 
-                # get sublayer names
-                sub_layers = dict((lyr.datasetName, lyr) for lyr in arcpy.mapping.ListLayers(layer_object)[1:])
-                origins_sublayer = sub_layers["Origins"]
-                destinations_sublayer = sub_layers["Destinations"]
-                lines_sublayer = sub_layers["ODLines"]
-                solver_props = arcpy.na.GetSolverProperties(layer_object)
-                
-                # get impedance and accumulator field names
-                impedance = solver_props.impedance
-                total_impedance_fieldname = "Total_" + impedance
-                
-                #Use the JoinField tool to transfer origin and destination IDs from the OD Cost Matrix to the lines sublayer
-                arcpy.AddMessage("Joining attributes...")
-                if not arcpy.TestSchemaLock(od_lines_joined):
-                    # join option 1: if yes lock, append row number to lines table
-                    arcpy.management.AddJoin(lines_sublayer, "OriginID", origins_sublayer, "ObjectID")
-                    arcpy.management.AddJoin(lines_sublayer, "DestinationID", destinations_sublayer, "ObjectID")
-                    od_lines_joined = arcpy.conversion.TableToTable(lines_sublayer, arcpy.env.workspace, "od_lines_joined_"+str(row_id))
-                    arcpy.management.RemoveJoin(lines_sublayer)
+                # Export the results to a feature class
+                if result.solveSucceeded:
+                    result.export(arcpy.nax.OriginDestinationCostMatrixOutputDataType.Lines, r"in_memory/od_lines_"+str(row_id))
                 else:
-                    # join option 2: no lock
-                    arcpy.management.AddJoin(lines_sublayer, "OriginID", origins_sublayer, "ObjectID")
-                    arcpy.management.AddJoin(lines_sublayer, "DestinationID", destinations_sublayer, "ObjectID")
-                    od_lines_joined = arcpy.conversion.TableToTable(lines_sublayer, arcpy.env.workspace, "od_lines_joined")
-                    arcpy.management.RemoveJoin(lines_sublayer)
+                    print("Solved failed")
+                    print(result.solverMessages(arcpy.nax.MessageSeverity.All))
+                    
+                od_lines = arcpy.management.MakeFeatureLayer(r"in_memory/od_lines_"+str(row_id), "od_lines")
+                
+                # add join to transfer origin and destination IDs from the OD Cost Matrix to the lines sublayer
+                arcpy.AddMessage("Joining attributes...")
+                arcpy.management.AddJoin(od_lines, "OriginName", origins_i_attr, "i_id_text")
+                arcpy.management.AddJoin(od_lines, "DestinationName", destinations_j_attr, "j_id_text")
+                od_lines_joined = arcpy.conversion.FeatureClassToFeatureClass(od_lines, r"in_memory", "od_lines_joined_"+str(row_id))
+                arcpy.management.RemoveJoin(od_lines)
+                arcpy.management.RemoveJoin(od_lines)
                 
                 # delete rows where i = j
-                od_lines_view = arcpy.management.MakeTableView(od_lines_joined, "od_lines_joined_view")
                 if del_i_eq_j == "true":
                     if origins_i_input == destinations_j_input:
                         if i_id == j_id:
-                            arcpy.AddMessage("Deleting lines where i = j...")
-                            arcpy.management.SelectLayerByAttribute(od_lines_view, "NEW_SELECTION", "Origins_i_id = Destinations_j_id")
-                            if int(arcpy.management.GetCount(od_lines_view)[0]) > 0:
-                                arcpy.management.DeleteRows(od_lines_view)
+                            arcpy.management.MakeFeatureLayer(od_lines_joined, "od_lines_view")
+                            arcpy.management.SelectLayerByAttribute("od_lines_view", "NEW_SELECTION", "i_id <> j_id")
+                            arcpy.management.SelectLayerByAttribute("od_lines_view", "SWITCH_SELECTION")
+                            if int(arcpy.management.GetCount("od_lines_view").getOutput(0)) > 0:
+                                arcpy.AddMessage("Deleting "+str(int(arcpy.management.GetCount("od_lines_view")[0]))+" lines where i = j...")
+                                arcpy.management.DeleteRows("od_lines_view")
                         else:
                             arcpy.AddMessage("Can't delete where i = j: inputs don't match")
                     else:
                         arcpy.AddMessage("Can't delete where i = j: inputs don't match")
                 
                 # impedance functions
-                arcpy.AddMessage("Calculating Accessibility...")
-                o_j = '!Destinations_o_j!'
+                o_j = '!o_j!'
+                total_impedance_fieldname = "Total_Time"
                 t_ij = '!'+total_impedance_fieldname+'!'
                 
                 # loop over selected impedance functions list
+                arcpy.AddMessage("Calculating Accessibility...")
                 for i in selected_impedance_function:
                     f_name = i
                     # define dictionary of functions with calls to parameters dictionary p
                     func = {
-                        "pow": "(1 if %s<1 else (%s**-%s))" % (t_ij, t_ij, p[f_name]["b0"]),
-                        "neg_exp": "(math.exp(-%s*%s))" % (t_ij, p[f_name]["b0"]),
-                        "mgaus": "(math.exp(-%s**2/%s))" % (t_ij, p[f_name]["b0"]),
-                        "cumr": "(1 if %s<=%s else 0)" % (t_ij, p[f_name]["t_bar"]),
-                        "cuml": "(1-%s/%s if %s<=%s else 0)" % (t_ij, p[f_name]["t_bar"], t_ij, p[f_name]["t_bar"])
+                        "pow": "(1 if {}<1 else ({}**-{}))".format(t_ij, t_ij, p[f_name]["b0"]),
+                        "neg_exp": "(math.exp(-{}*{}))".format(t_ij, p[f_name]["b0"]),
+                        "mgaus": "(math.exp(-{}**2/{}))".format(t_ij, p[f_name]["b0"]),
+                        "cumr": "(1 if {}<={} else 0)".format(t_ij, p[f_name]["t_bar"]),
+                        "cuml": "(1-{}/{} if {}<={} else 0)".format(t_ij, p[f_name]["t_bar"], t_ij, p[f_name]["t_bar"])
                     }
+                    
                     impedance_f = func[p[f_name]["f"]]
                     arcpy.management.AddField(od_lines_joined, "Ai_"+f_name, "DOUBLE")
-                    arcpy.management.CalculateField(od_lines_joined, "Ai_"+f_name, "%s*%s" % (o_j, impedance_f), "PYTHON", None)
+                    arcpy.management.CalculateField(od_lines_joined, "Ai_"+f_name, "{}*{}".format(o_j, impedance_f), "PYTHON3", None)
                 
                 # calcualte summary statistics
                 arcpy.AddMessage("Summarizing Accessibility...")
                 sum_fields = ["Ai_"+f_field+" SUM" for f_field in selected_impedance_function]
                 sum_fields_str = ";".join(sum_fields)
-                arcpy.analysis.Statistics(od_lines_joined,
-                                          arcpy.env.workspace+"\\od_statistics",
-                                          sum_fields_str,
-                                          "Origins_i_id")
+                arcpy.analysis.Statistics(od_lines_joined, r"in_memory/od_statistics_"+str(row_id), sum_fields_str, "i_id")
                 
+                # append to master output table
                 arcpy.AddMessage("Appending accessibility output for batch "+str(row_id)+" of "+str(polygon_count)+"...")
-                arcpy.management.Append(arcpy.env.workspace+"\\od_statistics", output_table, "NO_TEST")
+                arcpy.management.Append(r"in_memory/od_statistics_"+str(row_id), output_table, "NO_TEST")
+                
+                # clean up
+                arcpy.management.Delete(r"in_memory/temp_origins_"+str(row_id))
+                arcpy.management.Delete(r"in_memory/od_lines_"+str(row_id))
+                arcpy.management.Delete(r"in_memory/od_lines_joined_"+str(row_id))
+                arcpy.management.Delete(r"in_memory/od_statistics_"+str(row_id))
+                
+                # progress indicator
+                output_progress = ((int(arcpy.management.GetCount(output_table).getOutput(0))/origins_i_count)*100)
+                arcpy.AddMessage("Accessibility calculation is "+str(round(output_progress, 2))+" percent complete")
         
-        # join back i does not seem to work in ArcMap - joinfield returns general function error
-        #if join_back_i == "true":
-        #    # join accessibility output back to origins input
-        #    join_fields = ["SUM_Ai_"+f_field for f_field in selected_impedance_function]
-        #    join_fields.insert(0, "FREQUENCY")
-        #    arcpy.AddMessage("Joining accessibility output to input i...")
-        #    arcpy.management.JoinField(origins_i_input, i_id, output_table, "Origins_i_id", join_fields)
+        if join_back_i == "true":
+            # join accessibility output back to origins input
+            join_fields = ["SUM_Ai_"+f_field for f_field in selected_impedance_function]
+            join_fields.insert(0, "FREQUENCY")
+            arcpy.AddMessage("Joining accessibility output to input i...")
+            arcpy.management.JoinField(origins_i_input, i_id, output_table, "i_id", join_fields)
+        
+        # clean up
+        arcpy.management.Delete(r"in_memory/origins_i_point")
+        arcpy.management.Delete(r"in_memory/origins_i")
+        arcpy.management.Delete(r"in_memory/origins_i_attr")
+        arcpy.management.Delete(r"in_memory/destinations_j_point")
+        arcpy.management.Delete(r"in_memory/destinations_j")
+        arcpy.management.Delete(r"in_memory/destinations_j_attr")
+        arcpy.management.Delete(r"in_memory/raster")
+        arcpy.management.Delete(r"in_memory/polygons")
         
         arcpy.AddMessage("Finished accessibility calculation")
         return

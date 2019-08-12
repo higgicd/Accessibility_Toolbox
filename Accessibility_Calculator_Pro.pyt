@@ -1,8 +1,7 @@
-# Accessibility Calculator for ArcGIS
+# Accessibility Calculator for ArcGIS v1.1
 # Christopher D. Higgins
-# Department of Land Surveying and Geo-Informatics
-# Department of Building and Real Estate
-# The Hong Kong Polytechnic University
+# Department of Human Geography
+# University of Toronto Scarborough
 # https://higgicd.github.io
 # tool help can be found at https://github.com/higgicd/Accessibility_Toolbox
     
@@ -10,23 +9,21 @@ import arcpy
 from arcpy import env
 env.overwriteOutput = True
 import os
-import time
-start_time = time.clock()
 
 class Toolbox(object):
     def __init__(self):
         """Define the toolbox (the name of the toolbox is the name of the .pyt file)."""
-        self.label = "Accessibility Calculator Pro"
-        self.alias = "Accessibility_Calculator_Pro"
+        self.label = "Accessibility Calculator for ArcGIS Pro"
+        self.alias = "AccessibilityCalculatorforArcGISPro"
 
         # List of tool classes associated with this toolbox
-        self.tools = [AccessCalc, AccessBatch]
+        self.tools = [AccessCalcPro, AccessBatchPro]
 
 ############### START OF ACCESS CALC TOOL ###############
 
-class AccessCalc(object):
+class AccessCalcPro(object):
     def __init__(self):
-        self.label = "Accessibility Calculator"
+        self.label = "Accessibility Calculator for ArcGIS Pro"
         self.description = "Calculate place-based accessibility for origins"
         self.canRunInBackground = True
         self.category = "Accessibility Calculator"
@@ -59,10 +56,10 @@ class AccessCalc(object):
         param3 = arcpy.Parameter(
             displayName="Departure Time",
             name="time_of_day",
-            datatype="GPString",
-            parameterType="Required",
+            datatype="GPDate",
+            parameterType="Optional",
             direction="Input")
-        param3.value = "None"
+        param3.value = None
         
         param4 = arcpy.Parameter(
             displayName="Impedance Measure",
@@ -90,7 +87,7 @@ class AccessCalc(object):
         param7 = arcpy.Parameter(
             displayName="Origins Network Search Tolerance",
             name="search_tolerance_i",
-            datatype="GPString",
+            datatype="GPLinearUnit",
             parameterType="Required",
             direction="Input")
         param7.value = "5000 Meters"
@@ -98,18 +95,24 @@ class AccessCalc(object):
         param8 = arcpy.Parameter(
             displayName="Origins Network Search Criteria",
             name="search_criteria_i",
-            datatype="GPString",
+            datatype="GPValueTable",
             parameterType="Required",
             direction="Input")
-        param8.value = "None"
+        param8.value = None
+        param8.columns = [['GPString', 'Network Source'], ['GPString', 'Snap Type']]
+        param8.filters[0].type = 'ValueList'
+        param8.filters[1].type = 'ValueList'
+        param8.filters[1].list = ['SHAPE', 'MIDDLE', 'END', 'NONE']
         
         param9 = arcpy.Parameter(
             displayName="Origins Network Search Query",
             name="search_query_i",
-            datatype="GPString",
-            parameterType="Required",
+            datatype="GPValueTable",
+            parameterType="Optional",
             direction="Input")
-        param9.value = "None"
+        param9.value = None
+        param9.columns = [['GPString', 'Network Source'], ['GPString', 'Expression']]
+        param9.filters[0].type = 'ValueList'
         
         param10 = arcpy.Parameter(
             displayName="Destinations",
@@ -135,7 +138,7 @@ class AccessCalc(object):
         param13 = arcpy.Parameter(
             displayName="Destinations Network Search Tolerance",
             name="search_tolerance_j",
-            datatype="GPString",
+            datatype="GPLinearUnit",
             parameterType="Required",
             direction="Input")
         param13.value = "5000 Meters"
@@ -143,18 +146,24 @@ class AccessCalc(object):
         param14 = arcpy.Parameter(
             displayName="Destinations Network Search Criteria",
             name="search_criteria_j",
-            datatype="GPString",
+            datatype="GPValueTable",
             parameterType="Required",
             direction="Input")
-        param14.value = "None"
+        param14.value = None
+        param14.columns = [['GPString', 'Network Source'], ['GPString', 'Snap Type']]
+        param14.filters[0].type = 'ValueList'
+        param14.filters[1].type = 'ValueList'
+        param14.filters[1].list = ['SHAPE', 'MIDDLE', 'END', 'NONE']
         
         param15 = arcpy.Parameter(
             displayName="Destinations Network Search Query",
             name="search_query_j",
-            datatype="GPString",
-            parameterType="Required",
+            datatype="GPValueTable",
+            parameterType="Optional",
             direction="Input")
-        param15.value = "None"
+        param15.value = None
+        param15.columns = [['GPString', 'Network Source'], ['GPString', 'Expression']]
+        param15.filters[0].type = 'ValueList'
         
         param16 = arcpy.Parameter(
             displayName="Output Work Folder",
@@ -246,6 +255,13 @@ class AccessCalc(object):
             network_travel_modes = arcpy.na.GetTravelModes(parameters[0].valueAsText)
             fields1 = list(network_travel_modes)
             parameters[1].filter.list = fields1
+            network_describe = arcpy.Describe(parameters[0].valueAsText)
+            network_sources = network_describe.sources
+            network_source_features = [source.name for source in network_sources]
+            parameters[8].filters[0].list = list(network_source_features)
+            parameters[9].filters[0].list = list(network_source_features)
+            parameters[14].filters[0].list = list(network_source_features)
+            parameters[15].filters[0].list = list(network_source_features)
             
         fields4 = list(p)
         parameters[4].filter.list = fields4
@@ -275,26 +291,24 @@ class AccessCalc(object):
         network = parameters[0].valueAsText
         travel_mode = parameters[1].valueAsText
         cutoff = parameters[2].valueAsText
-        time_of_day = parameters[3].valueAsText
+        time_of_day = parameters[3].value
         impedance_list = parameters[4].valueAsText
         origins_i_input = parameters[5].valueAsText
         i_id = parameters[6].valueAsText
-        search_tolerance_i = parameters[7].valueAsText
-        search_criteria_i = parameters[8].valueAsText
-        search_query_i = parameters[9].valueAsText
+        search_tolerance_i = parameters[7].value
+        search_criteria_i = parameters[8].value
+        search_query_i = parameters[9].value
         destinations_j_input = parameters[10].valueAsText
         j_id = parameters[11].valueAsText
         opportunities_j = parameters[12].valueAsText
-        search_tolerance_j = parameters[13].valueAsText
-        search_criteria_j = parameters[14].valueAsText
-        search_query_j = parameters[15].valueAsText
+        search_tolerance_j = parameters[13].value
+        search_criteria_j = parameters[14].value
+        search_query_j = parameters[15].value
         output_dir = parameters[16].valueAsText
         output_gdb = parameters[17].valueAsText
         del_i_eq_j = parameters[18].valueAsText
         join_back_i = parameters[19].valueAsText
         layer_name = "Accessibility OD Matrix"
-        origins_i_desc = arcpy.Describe(origins_i_input)
-        origins_i_path = origins_i_desc.path
         
         # split impedance function multivalue
         selected_impedance_function = impedance_list.split(";")
@@ -377,8 +391,8 @@ class AccessCalc(object):
         
         # create od matrix
         arcpy.AddMessage("Creating Accessibility OD Cost Matrix...")
-        if time_of_day != "None":
-            arcpy.AddMessage("Departure time is "+time_of_day)
+        if time_of_day != None:
+            arcpy.AddMessage("Departure time is "+str(time_of_day))
             result_object = arcpy.na.MakeODCostMatrixAnalysisLayer(network, layer_name, 
                                                travel_mode = travel_mode, 
                                                cutoff = cutoff, 
@@ -415,7 +429,8 @@ class AccessCalc(object):
                               search_criteria = search_criteria_i,
                               append = "CLEAR",
                               exclude_restricted_elements = "EXCLUDE",
-                              search_query = search_query_i)
+                              search_query = search_query_i,
+                              snap_to_position_along_network = 'SNAP')
         
         # field mappings j
         arcpy.na.AddFieldToAnalysisLayer(layer_object, destinations_layer_name, "j_id", j_id_type)
@@ -431,7 +446,8 @@ class AccessCalc(object):
                               search_criteria = search_criteria_j,
                               append = "CLEAR",
                               exclude_restricted_elements = "EXCLUDE",
-                              search_query = search_query_j)
+                              search_query = search_query_j,
+                              snap_to_position_along_network = 'SNAP')
         
         # solve
         arcpy.AddMessage("Solving OD Matrix...")
@@ -505,15 +521,14 @@ class AccessCalc(object):
             arcpy.AddMessage("Joining accessibility output to input i...")
             arcpy.management.JoinField(origins_i_input, i_id, output_table, "i_id", join_fields)
         
-        end_time = time.clock()
-        arcpy.AddMessage("Finished accessibility calculation in "+str(round(((end_time-start_time)/60), 2))+" minutes")
+        arcpy.AddMessage("Finished accessibility calculation")
         return
 
 ############### START OF ACCESS BATCH TOOL ###############
 
-class AccessBatch(object):
+class AccessBatchPro(object):
     def __init__(self):
-        self.label = "Batch Accessibility Calculator"
+        self.label = "Batch Accessibility Calculator for ArcGIS Pro"
         self.description = "Batch calculate place-based accessibility for a large number of origins"
         self.canRunInBackground = True
         self.category = "Accessibility Calculator"
@@ -546,10 +561,10 @@ class AccessBatch(object):
         param3 = arcpy.Parameter(
             displayName="Departure Time",
             name="time_of_day",
-            datatype="GPString",
-            parameterType="Required",
+            datatype="GPDate",
+            parameterType="Optional",
             direction="Input")
-        param3.value = "None"
+        param3.value = None
         
         param4 = arcpy.Parameter(
             displayName="Impedance Measure",
@@ -577,7 +592,7 @@ class AccessBatch(object):
         param7 = arcpy.Parameter(
             displayName="Origins Network Search Tolerance",
             name="search_tolerance_i",
-            datatype="GPString",
+            datatype="GPLinearUnit",
             parameterType="Required",
             direction="Input")
         param7.value = "5000 Meters"
@@ -585,18 +600,24 @@ class AccessBatch(object):
         param8 = arcpy.Parameter(
             displayName="Origins Network Search Criteria",
             name="search_criteria_i",
-            datatype="GPString",
+            datatype="GPValueTable",
             parameterType="Required",
             direction="Input")
-        param8.value = "None"
+        param8.value = None
+        param8.columns = [['GPString', 'Network Source'], ['GPString', 'Snap Type']]
+        param8.filters[0].type = 'ValueList'
+        param8.filters[1].type = 'ValueList'
+        param8.filters[1].list = ['SHAPE', 'MIDDLE', 'END', 'NONE']
         
         param9 = arcpy.Parameter(
             displayName="Origins Network Search Query",
             name="search_query_i",
-            datatype="GPString",
-            parameterType="Required",
+            datatype="GPValueTable",
+            parameterType="Optional",
             direction="Input")
-        param9.value = "None"
+        param9.value = None
+        param9.columns = [['GPString', 'Network Source'], ['GPString', 'Expression']]
+        param9.filters[0].type = 'ValueList'
         
         param10 = arcpy.Parameter(
             displayName="Destinations",
@@ -622,7 +643,7 @@ class AccessBatch(object):
         param13 = arcpy.Parameter(
             displayName="Destinations Network Search Tolerance",
             name="search_tolerance_j",
-            datatype="GPString",
+            datatype="GPLinearUnit",
             parameterType="Required",
             direction="Input")
         param13.value = "5000 Meters"
@@ -630,18 +651,24 @@ class AccessBatch(object):
         param14 = arcpy.Parameter(
             displayName="Destinations Network Search Criteria",
             name="search_criteria_j",
-            datatype="GPString",
+            datatype="GPValueTable",
             parameterType="Required",
             direction="Input")
-        param14.value = "None"
+        param14.value = None
+        param14.columns = [['GPString', 'Network Source'], ['GPString', 'Snap Type']]
+        param14.filters[0].type = 'ValueList'
+        param14.filters[1].type = 'ValueList'
+        param14.filters[1].list = ['SHAPE', 'MIDDLE', 'END', 'NONE']
         
         param15 = arcpy.Parameter(
             displayName="Destinations Network Search Query",
             name="search_query_j",
-            datatype="GPString",
-            parameterType="Required",
+            datatype="GPValueTable",
+            parameterType="Optional",
             direction="Input")
-        param15.value = "None"
+        param15.value = None
+        param15.columns = [['GPString', 'Network Source'], ['GPString', 'Expression']]
+        param15.filters[0].type = 'ValueList'
         
         param16 = arcpy.Parameter(
             displayName="Output Work Folder",
@@ -743,6 +770,13 @@ class AccessBatch(object):
             network_travel_modes = arcpy.na.GetTravelModes(parameters[0].valueAsText)
             fields1 = list(network_travel_modes)
             parameters[1].filter.list = fields1
+            network_describe = arcpy.Describe(parameters[0].valueAsText)
+            network_sources = network_describe.sources
+            network_source_features = [source.name for source in network_sources]
+            parameters[8].filters[0].list = list(network_source_features)
+            parameters[9].filters[0].list = list(network_source_features)
+            parameters[14].filters[0].list = list(network_source_features)
+            parameters[15].filters[0].list = list(network_source_features)
         
         if parameters[5].altered:
             fields6 = [f.name for f in arcpy.ListFields(parameters[5].valueAsText)]
@@ -770,27 +804,25 @@ class AccessBatch(object):
         network = parameters[0].valueAsText
         travel_mode = parameters[1].valueAsText
         cutoff = parameters[2].valueAsText
-        time_of_day = parameters[3].valueAsText
+        time_of_day = parameters[3].value
         impedance_list = parameters[4].valueAsText
         origins_i_input = parameters[5].valueAsText
         i_id = parameters[6].valueAsText
-        search_tolerance_i = parameters[7].valueAsText
-        search_criteria_i = parameters[8].valueAsText
-        search_query_i = parameters[9].valueAsText
+        search_tolerance_i = parameters[7].value
+        search_criteria_i = parameters[8].value
+        search_query_i = parameters[9].value
         destinations_j_input = parameters[10].valueAsText
         j_id = parameters[11].valueAsText
         opportunities_j = parameters[12].valueAsText
-        search_tolerance_j = parameters[13].valueAsText
-        search_criteria_j = parameters[14].valueAsText
-        search_query_j = parameters[15].valueAsText
+        search_tolerance_j = parameters[13].value
+        search_criteria_j = parameters[14].value
+        search_query_j = parameters[15].value
         output_dir = parameters[16].valueAsText
         output_gdb = parameters[17].valueAsText
         od_size_factor = parameters[18].value
         del_i_eq_j = parameters[19].valueAsText
         join_back_i = parameters[20].valueAsText
         layer_name = "Accessibility OD Matrix"
-        origins_i_desc = arcpy.Describe(origins_i_input)
-        origins_i_path = origins_i_desc.path
         
         # split impedance function multivalue
         selected_impedance_function = impedance_list.split(";")
@@ -860,12 +892,15 @@ class AccessBatch(object):
         if describe_i.ShapeType == "Polygon":
             arcpy.AddMessage("Converting Origins to points...")
             origins_i = arcpy.management.FeatureToPoint(origins_i_input, "origins_i_point", "INSIDE")
-            arcpy.management.AddField(origins_i, "seq_id", "LONG")
-            arcpy.management.CalculateField(origins_i, "seq_id", "autoIncrement()", "PYTHON3", r"rec=0 \ndef autoIncrement(): \n global rec \n pStart = 1  \n pInterval = 1 \n if (rec == 0):  \n  rec = pStart  \n else:  \n  rec += pInterval  \n return rec")
+            
         else:
             origins_i = arcpy.management.CopyFeatures(origins_i_input, "origins_i_point")
-            arcpy.management.AddField(origins_i, "seq_id", "LONG")
-            arcpy.management.CalculateField(origins_i, "seq_id", "autoIncrement()", "PYTHON3", r"rec=0 \ndef autoIncrement(): \n global rec \n pStart = 1  \n pInterval = 1 \n if (rec == 0):  \n  rec = pStart  \n else:  \n  rec += pInterval  \n return rec")
+        
+        # create new sequential id using function
+        arcpy.management.AddField(origins_i, "seq_id", "LONG")
+        arcpy.management.CalculateField(origins_i, "seq_id", "autoIncrement()", "PYTHON3", "rec=0\ndef autoIncrement():\n    global rec\n    pStart    = 1 \n    pInterval = 1 \n " +
+"   if (rec == 0): \n        rec = pStart \n    else: \n        rec += pInterval \n  " +
+"  return rec")
         
         # convert j to points if input is polygon
         describe_j = arcpy.Describe(destinations_j_input)
@@ -877,8 +912,8 @@ class AccessBatch(object):
         
         # create od matrix
         arcpy.AddMessage("Creating Accessibility OD Cost Matrix...")
-        if time_of_day != "None":
-            arcpy.AddMessage("Departure time is "+time_of_day)
+        if time_of_day != None:
+            arcpy.AddMessage("Departure time is "+str(time_of_day))
             result_object = arcpy.na.MakeODCostMatrixAnalysisLayer(network, layer_name, 
                                                travel_mode = travel_mode, 
                                                cutoff = cutoff, 
@@ -957,7 +992,8 @@ class AccessBatch(object):
                               search_criteria = search_criteria_j,
                               append = "CLEAR",
                               exclude_restricted_elements = "EXCLUDE",
-                              search_query = search_query_j)
+                              search_query = search_query_j,
+                              snap_to_position_along_network = 'SNAP')
         
         # field mappings i
         arcpy.na.AddFieldToAnalysisLayer(layer_object, origins_layer_name, "i_id", i_id_type)
@@ -980,13 +1016,14 @@ class AccessBatch(object):
                 
                 # add locations i
                 arcpy.AddMessage("Adding Origins for batch "+str(row_id)+" of "+str(polygon_count)+"...")
-                arcpy.na.AddLocations(layer_object, origins_layer_name, "temp_origins_i", 
-                              field_mappings_i,
-                              search_tolerance = search_tolerance_i,
-                              search_criteria = search_criteria_i,
-                              append = "CLEAR",
-                              exclude_restricted_elements = "EXCLUDE",
-                              search_query = search_query_i)
+                arcpy.na.AddLocations(layer_object, origins_layer_name, "temp_origins_i",
+                                      field_mappings_i,
+                                      search_tolerance = search_tolerance_i,
+                                      search_criteria = search_criteria_i,
+                                      append = "CLEAR",
+                                      exclude_restricted_elements = "EXCLUDE",
+                                      search_query = search_query_i,
+                                      snap_to_position_along_network = 'SNAP')
                 
                 # solve
                 arcpy.AddMessage("Solving OD Matrix...")
@@ -1075,6 +1112,5 @@ class AccessBatch(object):
             arcpy.AddMessage("Joining accessibility output to input i...")
             arcpy.management.JoinField(origins_i_input, i_id, output_table, "i_id", join_fields)
         
-        end_time = time.clock()
-        arcpy.AddMessage("Finished accessibility calculation in "+str(round(((end_time-start_time)/60), 2))+" minutes")
+        arcpy.AddMessage("Finished accessibility calculation")
         return
