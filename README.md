@@ -20,7 +20,7 @@ The second is an interactive **Accessibility Toolbox** R Notebook that visualize
 
 ## Calculating Accessibility in ArcGIS
 The Accessibility Calculator has several inputs:  
-<img align="right" width="300" height="1000" src="https://github.com/higgicd/Accessibility_Toolbox/blob/master/assets/toolbox_fig.png">
+<img align="right" width="275" height="1250" src="https://github.com/higgicd/Accessibility_Toolbox/blob/master/assets/toolbox.png">
 
 *Network Details*
 - **Input Network Dataset**: the input Network Analyst network dataset for your analysis
