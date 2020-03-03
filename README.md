@@ -59,7 +59,7 @@ The Accessibility Calculator has several inputs:
 *General Settings*
 - **Output Work Folder**: the folder where the output geodatabase and multiprocessing workers folder will be created; working files generated during large analyses can require many gigabytes of disk space but they are automatically deleted once the tool finishes
 - **Name of Output Analysis Geodatabase**: name for the output geodatabase containing the scratch working files and the final tool output
-- **Origins Maximum Batch Size**: maximum size of each batch of origins for multiprocessing and controlling memory/disk use; some optimization may occur if the number of observations can be spread over the available processes within your set maximum batch size (```(n/cpus-1)+1 if n/cpus-1 <= batch size```), otherwise it adheres to ```n/batch size```
+- **Origins Maximum Batch Size**: maximum size of each batch of origins for multiprocessing and controlling memory/disk use; some optimization may occur if the number of observations can be spread over the available processes within your set maximum batch size (```(n/(cpus-1))+1 if n/(cpus-1) <= batch size```), otherwise it adheres to ```n/batch size```
 - *Delete OD lines where i = j?* (optional): if selected, the tool will delete any origin-destination lines or pairs where the origin was the same as the destination; useful if you only want to calculate access to opportunities that are external to the origins
 - *Join output back to origins?* (optional): if selected, joins the accessibility output back to the input origins
 
