@@ -1,4 +1,4 @@
-# Accessibility Calculator for ArcGIS Pro v2.0
+# Accessibility Calculator for ArcGIS Pro v2.01
 # Christopher D. Higgins
 # Department of Human Geography
 # University of Toronto Scarborough
@@ -22,33 +22,33 @@ arcpy.CheckOutExtension("Network")
 
 # ----- parameters ----- # change all these as you see fit
 # --- origins ---
-#origins_i_input = r"D:/access_multi/Toronto_Accessibility_GIS.gdb/Toronto_1k"
-#i_id_field = "OID"
-#search_tolerance_i = "5000 Meters"
-#search_criteria_i = [["Streets", "SHAPE"]] # snap to streets
-#search_query_i = None
+#origins_i_input = r"D:/access_multi/Toronto_Accessibility_GIS.gdb/Toronto_1k" # file path for origins
+#i_id_field = "OID" # origins id field name
+#search_tolerance_i = "5000 Meters" # network location search tolerance
+#search_criteria_i = [["Streets", "SHAPE"]] # location search criteria
+#search_query_i = None # location search criteria
 
 # --- destinations ---
 #destinations_j_input = r"D:/access_multi/Toronto_Accessibility_GIS.gdb/Toronto_10k"
-#j_id_field = "OID"
-#o_j_field = "weight"
-#search_tolerance_j = "5000 Meters"
-#search_criteria_j = [["Streets", "SHAPE"]]
-#search_query_j = None
+#j_id_field = "OID" # destinations id field name
+#o_j_field = "weight" # destinations opportunities field name
+#search_tolerance_j = "5000 Meters" # network location search tolerance
+#search_criteria_j = [["Streets", "SHAPE"]] # location search criteria
+#search_query_j = None # location search criteria
 
 # --- network analysis ---
-#input_network = r"D:/access_multi/Toronto_Accessibility_GIS.gdb/GTFS/TransitNetwork_ND"
-#travel_mode = "Public transit time"
-#cutoff = None
+#input_network = r"D:/access_multi/Toronto_Accessibility_GIS.gdb/GTFS/TransitNetwork_ND" # file path to network dataset
+#travel_mode = "Public transit time" # travel mode
+#cutoff = None # travel time cut-off
 #time_of_day = datetime.datetime.strptime("12/30/2019 8:00:00 AM", '%m/%d/%Y %I:%M:%S %p') # change start datetime for your analysis
 #time_of_day = None # or use None
-#selected_impedance_function = ["HN1997", "CUMR45", "MGAUS180"]
+#selected_impedance_function = ["HN1997", "CUMR45", "MGAUS180"] # see online or parameters file for list
 
 #batch_size_factor = 500 # this controls how many origins are in a single batch
-#output_dir = r"D:/access_multi"
-#output_gdb = "Access_multi_100"
-#del_i_eq_j = "true" # "true" or "false"
-#join_back_i = "true" # "true" or "false"
+#output_dir = r"D:/access_multi" # directory for output and worker files
+#output_gdb = "Access_multi_100" # output geodatabase name
+#del_i_eq_j = "true" # delete lines where i = j? "true" or "false"
+#join_back_i = "true" # join output back to origins? "true" or "false"
 
 # ----- main -----
 
@@ -343,9 +343,9 @@ def main(input_network, travel_mode, cutoff,
          del_i_eq_j, join_back_i):
     
     # --- check if using ArcGIS Pro version 2.4 or newer ---
-    version = float(arcpy.GetInstallInfo()['Version'])
-    if version < 2.4:
-        raise Exception("ArcGIS Pro version is "+str(version)+", tool requires 2.4 or above")
+    #version = float(arcpy.GetInstallInfo()['Version'])
+    #if version < 2.4:
+    #    raise Exception("ArcGIS Pro version is "+str(version)+", tool requires 2.4 or above")
     
     # --- check opportunities_j field type compatibility ---
     o_j_field_type = field_type_x(destinations_j_input, o_j_field)
@@ -429,6 +429,12 @@ def main(input_network, travel_mode, cutoff,
 
 if __name__ == '__main__':
     start_time = time.time()
-    main()
+    main(input_network, travel_mode, cutoff,
+         time_of_day, selected_impedance_function,
+         origins_i_input, i_id_field, 
+         search_tolerance_i, search_criteria_i, search_query_i,
+         destinations_j_input, j_id_field, o_j_field,
+         search_tolerance_j, search_criteria_j, search_query_j,
+         batch_size_factor, output_dir, output_gdb, del_i_eq_j, join_back_i)
     elapsed_time = time.time() - start_time
     arcpy.AddMessage("Accessibility calculation took "+str(elapsed_time))
