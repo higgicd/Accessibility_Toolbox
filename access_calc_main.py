@@ -149,7 +149,7 @@ def batch_i_setup(input_fc, batch_size):
     arcpy.management.Sort(input_fc, os.path.join(arcpy.env.workspace+"/origins_i"), "Shape ASCENDING", "PEANO")
     arcpy.management.AddField(os.path.join(arcpy.env.workspace+"/origins_i"), "batch_id", "LONG")
     arcpy.management.CalculateField(os.path.join(arcpy.env.workspace+"/origins_i"), "batch_id",
-                                    "int(autoIncrement()/"+str(batch_size)+")", "PYTHON3",
+                                    "math.ceil(autoIncrement()/"+str(batch_size)+")", "PYTHON3",
                                     "rec=0\ndef autoIncrement():\n    global rec\n    pStart    = 1 \n    pInterval = 1 \n " +
                                     "   if (rec == 0): \n        rec = pStart \n    else: \n        rec += pInterval \n  " +
                                     "  return rec")
