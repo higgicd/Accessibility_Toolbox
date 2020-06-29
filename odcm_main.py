@@ -1,4 +1,4 @@
-# Accessibility Calculator for ArcGIS Pro v2.01
+# Origin-Destination Cost Matrix Calculator MP for ArcGIS Pro v2.1
 # Christopher D. Higgins
 # Department of Human Geography
 # University of Toronto Scarborough
@@ -31,7 +31,6 @@ arcpy.CheckOutExtension("Network")
 # --- destinations ---
 #destinations_j_input = r"D:/access_multi/Toronto_Accessibility_GIS.gdb/Toronto_10k"
 #j_id_field = "OID" # destinations id field name
-#o_j_field = "weight" # destinations opportunities field name
 #search_tolerance_j = "5000 Meters" # network location search tolerance
 #search_criteria_j = [["Streets", "SHAPE"]] # location search criteria
 #search_query_j = None # location search criteria
@@ -42,13 +41,10 @@ arcpy.CheckOutExtension("Network")
 #cutoff = None # travel time cut-off
 #time_of_day = datetime.datetime.strptime("12/30/2019 8:00:00 AM", '%m/%d/%Y %I:%M:%S %p') # change start datetime for your analysis
 #time_of_day = None # or use None
-#selected_impedance_function = ["HN1997", "CUMR45", "MGAUS180"] # see online or parameters file for list
 
 #batch_size_factor = 500 # this controls how many origins are in a single batch
 #output_dir = r"D:/access_multi" # directory for output and worker files
 #output_gdb = "Access_multi_100" # output geodatabase name
-#del_i_eq_j = "true" # delete lines where i = j? "true" or "false"
-#join_back_i = "true" # join output back to origins? "true" or "false"
 
 # ----- main -----
 
@@ -172,7 +168,7 @@ def create_dict(input_fc, key_field, value_field):
     valueDict = {r[0]:r[1] for r in arcpy.da.SearchCursor(input_fc, [key_field, value_field])}
     return valueDict
 
-def preprocess_x(input_fc, input_type, id_field, o_j_field, input_network, search_tolerance, search_criteria, search_query, travel_mode, batch_size):
+def preprocess_x(input_fc, input_type, id_field, input_network, search_tolerance, search_criteria, search_query, travel_mode, batch_size):
     
     # add field mappings
     if input_type == "origins_i":
@@ -182,7 +178,6 @@ def preprocess_x(input_fc, input_type, id_field, o_j_field, input_network, searc
     if input_type == "destinations_j":
         field_mappings = arcpy.FieldMappings()
         field_mappings.addFieldMap(field_map_x(input_fc, id_field, "j_id"))
-        field_mappings.addFieldMap(field_map_x(input_fc, o_j_field, "o_j"))
         
     # convert to points if required
     describe_x = arcpy.Describe(input_fc, input_type)
@@ -206,7 +201,7 @@ def preprocess_x(input_fc, input_type, id_field, o_j_field, input_network, searc
         arcpy.management.CalculateField(r"in_memory/"+input_type, "j_id_text", "!j_id!", "PYTHON3")
         
         layer = arcpy.management.MakeFeatureLayer(r"in_memory/"+input_type, input_type+"_view")
-        arcpy.management.SelectLayerByAttribute(layer, "NEW_SELECTION", "o_j > 0")
+        #arcpy.management.SelectLayerByAttribute(layer, "NEW_SELECTION", "o_j > 0")
         
         arcpy.conversion.FeatureClassToFeatureClass(layer, arcpy.env.workspace, input_type)
         output_fc = os.path.join(arcpy.env.workspace+"/"+input_type)
@@ -231,9 +226,6 @@ def access_multi(jobs):
     travel_mode = jobs[5]
     cutoff = jobs[6]
     time_of_day = jobs[7]
-    selected_impedance_function = jobs[8]
-    o_j_dict = jobs[9]
-    del_i_eq_j = jobs[10]
     
     arcpy.management.CreateFileGDB(scratchworkspace, "batch_"+str(batch_id)+".gdb")
     worker_gdb = os.path.join(scratchworkspace+"/batch_"+str(batch_id)+".gdb")
@@ -289,65 +281,27 @@ def access_multi(jobs):
 
     # 4 EXPORT results to a feature class
     if result.solveSucceeded:
-        result.export(arcpy.nax.OriginDestinationCostMatrixOutputDataType.Lines, 
-                      os.path.join(r"in_memory", "od_lines_"+str(batch_id)))
-        od_lines = os.path.join(r"in_memory", "od_lines_"+str(batch_id))
+        #result.export(arcpy.nax.OriginDestinationCostMatrixOutputDataType.Lines, 
+        #              os.path.join(r"in_memory", "od_lines_"+str(batch_id)))
+        #od_lines = os.path.join(r"in_memory", "od_lines_"+str(batch_id))
         
         # ----- un-comment this and comment-out the above if you want to store the od_lines on disk -----
-        #result.export(arcpy.nax.OriginDestinationCostMatrixOutputDataType.Lines, 
-        #              os.path.join(worker_gdb+"\\od_lines_"+str(batch_id)))
-        #od_lines = os.path.join(worker_gdb+"\\od_lines_"+str(batch_id))
+        result.export(arcpy.nax.OriginDestinationCostMatrixOutputDataType.Lines, 
+                      os.path.join(worker_gdb+"\\od_lines_"+str(batch_id)))
+        od_lines = os.path.join(worker_gdb+"\\od_lines_"+str(batch_id))
     
-    # 5 ASSIGN key variable names - might be a localization issue here
-    t_ij = 'Total_Time'
-    i_id_text = 'OriginName'
-    j_id_text = 'DestinationName'
-    
-    # 6 DELETE rows where i == j:
-    if del_i_eq_j == "true":
-        arcpy.management.MakeFeatureLayer(od_lines, "od_lines_view")
-        arcpy.management.SelectLayerByAttribute("od_lines_view", "NEW_SELECTION", "OriginName <> DestinationName")
-        arcpy.management.SelectLayerByAttribute("od_lines_view", "SWITCH_SELECTION")
-        if int(arcpy.management.GetCount("od_lines_view").getOutput(0)) > 0:
-            arcpy.management.DeleteRows("od_lines_view")
-        else:
-            arcpy.AddMessage("Can't delete where i = j: inputs don't match")
-    
-    # 7 CALCULATE ACCESSIBILITY
-    for f in selected_impedance_function:
-        f_name = f
-        arcpy.management.AddField(od_lines, "Ai_"+f_name, "DOUBLE")
-        access_fields = [j_id_text, t_ij, "Ai_"+f_name]
-        with arcpy.da.UpdateCursor(od_lines, access_fields) as updateRows:
-            for updateRow in updateRows:
-                updateRow[2] = o_j_dict.get(updateRow[0])*parameters.impedance_f(updateRow[1], f_name)
-                updateRows.updateRow(updateRow)
-    
-    # 8 CALCULATE SUMMARY STATISTICS
-    arcpy.AddMessage("Summarizing accessibility...")
-    sum_fields = ["Ai_"+f_field+" SUM" for f_field in selected_impedance_function]
-    sum_fields_str = ";".join(sum_fields)
-    arcpy.analysis.Statistics(od_lines, os.path.join(worker_gdb+"\\output_batch_"+str(batch_id)), sum_fields_str, "OriginName")
-    output_table = os.path.join(worker_gdb+"\\output_batch_"+str(batch_id))
     arcpy.management.Delete(r"in_memory")
-    return output_table
+    #return output_table
+    return od_lines
 
 # ----- execute -----
 
-def main(input_network, travel_mode, cutoff,
-         time_of_day, selected_impedance_function,
+def main(input_network, travel_mode, cutoff, time_of_day,
          origins_i_input, i_id_field, 
          search_tolerance_i, search_criteria_i, search_query_i,
-         destinations_j_input, j_id_field, o_j_field,
+         destinations_j_input, j_id_field,
          search_tolerance_j, search_criteria_j, search_query_j,
-         batch_size_factor,
-         output_dir, output_gdb,
-         del_i_eq_j, join_back_i):
-    
-    # --- check opportunities_j field type compatibility ---
-    o_j_field_type = field_type_x(destinations_j_input, o_j_field)
-    if o_j_field_type == "TEXT":
-        raise Exception(str(o_j_field)+" field type is text")
+         batch_size_factor, output_dir, output_gdb):
     
     # --- setup workspace ---
     arcpy.env.workspace = workspace_setup(output_dir, output_gdb)
@@ -360,7 +314,6 @@ def main(input_network, travel_mode, cutoff,
     origins_i = preprocess_x(input_fc = origins_i_input,
                              input_type = "origins_i", 
                              id_field = i_id_field,
-                             o_j_field = None,
                              input_network = input_network, 
                              search_tolerance = search_tolerance_i, 
                              search_criteria = search_criteria_i,
@@ -374,15 +327,12 @@ def main(input_network, travel_mode, cutoff,
     destinations_j = preprocess_x(input_fc = destinations_j_input,
                                   input_type = "destinations_j",
                                   id_field = j_id_field,
-                                  o_j_field = o_j_field,
                                   input_network = input_network,
                                   search_tolerance = search_tolerance_j,
                                   search_criteria = search_criteria_j,
                                   search_query = search_query_j,
                                   travel_mode = travel_mode,
                                   batch_size = None)
-    #print(destinations_j)
-    o_j_dict = create_dict(destinations_j, key_field = "j_id_text", value_field = "o_j")
     
     # worker iterator
     batch_list = list_unique(os.path.join(arcpy.env.workspace+"/origins_i"), "batch_id")
@@ -393,9 +343,7 @@ def main(input_network, travel_mode, cutoff,
         jobs.append((batch_id, arcpy.env.scratchWorkspace, 
                      origins_i, destinations_j, 
                      input_network, travel_mode, 
-                     cutoff, time_of_day,
-                     selected_impedance_function, 
-                     o_j_dict, del_i_eq_j))
+                     cutoff, time_of_day))
     
     # multiprocessing
     multiprocessing.set_executable(os.path.join(sys.exec_prefix, 'pythonw.exe'))
@@ -404,34 +352,26 @@ def main(input_network, travel_mode, cutoff,
     result = pool.map(access_multi, jobs)
     pool.close()
     pool.join()
-    arcpy.AddMessage("Multiprocessing complete, merging results...")
-    access_output = arcpy.management.Merge(result, arcpy.env.workspace+"/output_"+output_gdb)
+    arcpy.AddMessage("Multiprocessing complete, merging matrices...")
+    odcm_output = arcpy.management.Merge(result, arcpy.env.workspace+"/output_"+output_gdb)
     
     # add back original i_id
-    turbo_joiner(target_fc = access_output, 
+    turbo_joiner(target_fc = odcm_output, 
                  target_id_field = 'OriginName', 
                  join_fc = origins_i, 
                  join_id_field = 'i_id_text', 
                  join_value_field = 'i_id')
-    
-    if join_back_i == "true":
-        # join accessibility output back to origins input
-        join_fields = ["SUM_Ai_"+f_field for f_field in selected_impedance_function]
-        join_fields.insert(0, "FREQUENCY")
-        arcpy.AddMessage("Joining accessibility output to origins_i...")
-        arcpy.management.JoinField(origins_i_input, i_id_field, access_output, "i_id", join_fields)
     
     # ----- clean up: this deletes the workers directory. comment-out if you want to keep -----
     arcpy.management.Delete(arcpy.env.scratchWorkspace)
 
 if __name__ == '__main__':
     start_time = time.time()
-    main(input_network, travel_mode, cutoff,
-         time_of_day, selected_impedance_function,
+    main(input_network, travel_mode, cutoff, time_of_day,
          origins_i_input, i_id_field, 
          search_tolerance_i, search_criteria_i, search_query_i,
-         destinations_j_input, j_id_field, o_j_field,
+         destinations_j_input, j_id_field,
          search_tolerance_j, search_criteria_j, search_query_j,
-         batch_size_factor, output_dir, output_gdb, del_i_eq_j, join_back_i)
+         batch_size_factor, output_dir, output_gdb)
     elapsed_time = time.time() - start_time
-    arcpy.AddMessage("Accessibility calculation took "+str(elapsed_time))
+    arcpy.AddMessage("ODCM calculation took "+str(elapsed_time))

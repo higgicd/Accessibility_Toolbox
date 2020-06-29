@@ -10,7 +10,8 @@ import arcpy
 from importlib import reload
 import access_calc_main
 reload(access_calc_main)
-#from access_calc_main import main
+import odcm_main
+reload(odcm_main)
 from arcpy import env
 env.overwriteOutput = True
 
@@ -21,7 +22,7 @@ class Toolbox(object):
         self.alias = "AccessibilityCalculatorforPro24Multiprocessing"
 
         # List of tool classes associated with this toolbox
-        self.tools = [AccessCalcProMP]
+        self.tools = [AccessCalcProMP, ODCMProMP]
 
 class AccessCalcProMP(object):
     def __init__(self):
@@ -305,4 +306,232 @@ class AccessCalcProMP(object):
                               del_i_eq_j, join_back_i)
                               
         arcpy.AddMessage("Finished accessibility calculation")
+        return
+
+class ODCMProMP(object):
+    def __init__(self):
+        self.label = "OD Cost Matrix Calculator for Pro 2.4 Multiprocessing"
+        self.description = "Calculate origin-destination cost matrix with multiprocessing"
+        self.canRunInBackground = True
+        self.category = "OD Cost Matrix Calculator"
+
+    def getParameterInfo(self):
+        param0 = arcpy.Parameter(
+            displayName="Input Network Dataset",
+            name="network",
+            datatype="GPNetworkDatasetLayer",
+            parameterType="Required",
+            direction="Input")
+        
+        param1 = arcpy.Parameter(
+            displayName="Travel Mode",
+            name="travel_mode",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input")
+        
+        param2 = arcpy.Parameter(
+            displayName="Cutoff Value",
+            name="cutoff",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input")
+        
+        param3 = arcpy.Parameter(
+            displayName="Departure Time",
+            name="time_of_day",
+            datatype="GPDate",
+            parameterType="Optional",
+            direction="Input")
+        param3.value = None
+        
+        param4 = arcpy.Parameter(
+            displayName="Origins",
+            name="origins_i_input",
+            datatype="GPFeatureLayer",
+            parameterType="Required",
+            direction="Input")
+        
+        param5 = arcpy.Parameter(
+            displayName="Origins ID Field",
+            name="i_id",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input")
+        
+        param6 = arcpy.Parameter(
+            displayName="Origins Network Search Tolerance",
+            name="search_tolerance_i",
+            datatype="GPLinearUnit",
+            parameterType="Required",
+            direction="Input")
+        param6.value = "5000 Meters"
+        
+        param7 = arcpy.Parameter(
+            displayName="Origins Network Search Criteria",
+            name="search_criteria_i",
+            datatype="GPValueTable",
+            parameterType="Required",
+            direction="Input")
+        param7.value = None
+        param7.columns = [['GPString', 'Network Source'], ['GPString', 'Snap Type']]
+        param7.filters[0].type = 'ValueList'
+        param7.filters[1].type = 'ValueList'
+        param7.filters[1].list = ['SHAPE', 'MIDDLE', 'END', 'NONE']
+        
+        param8 = arcpy.Parameter(
+            displayName="Origins Network Search Query",
+            name="search_query_i",
+            datatype="GPValueTable",
+            parameterType="Optional",
+            direction="Input")
+        param8.value = None
+        param8.columns = [['GPString', 'Network Source'], ['GPString', 'Expression']]
+        param8.filters[0].type = 'ValueList'
+        
+        param9 = arcpy.Parameter(
+            displayName="Destinations",
+            name="destinations_j_input",
+            datatype="GPFeatureLayer",
+            parameterType="Required",
+            direction="Input")
+        
+        param10 = arcpy.Parameter(
+            displayName="Destinations ID Field",
+            name="j_id",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input")
+ 
+        param11 = arcpy.Parameter(
+            displayName="Destinations Network Search Tolerance",
+            name="search_tolerance_j",
+            datatype="GPLinearUnit",
+            parameterType="Required",
+            direction="Input")
+        param11.value = "5000 Meters"
+        
+        param12 = arcpy.Parameter(
+            displayName="Destinations Network Search Criteria",
+            name="search_criteria_j",
+            datatype="GPValueTable",
+            parameterType="Required",
+            direction="Input")
+        param12.value = None
+        param12.columns = [['GPString', 'Network Source'], ['GPString', 'Snap Type']]
+        param12.filters[0].type = 'ValueList'
+        param12.filters[1].type = 'ValueList'
+        param12.filters[1].list = ['SHAPE', 'MIDDLE', 'END', 'NONE']
+        
+        param13 = arcpy.Parameter(
+            displayName="Destinations Network Search Query",
+            name="search_query_j",
+            datatype="GPValueTable",
+            parameterType="Optional",
+            direction="Input")
+        param13.value = None
+        param13.columns = [['GPString', 'Network Source'], ['GPString', 'Expression']]
+        param13.filters[0].type = 'ValueList'
+        
+        param14 = arcpy.Parameter(
+            displayName="Output Work Folder",
+            name="output_dir",
+            datatype="DEWorkspace",
+            parameterType="Required",
+            direction="Input")
+        param14.filter.list = ["File System"]
+        
+        param15 = arcpy.Parameter(
+            displayName="Name of Output Analysis Geodatabase",
+            name="output_gdb",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input")
+        param15.value = "ODCMCalc"
+        
+        param16 = arcpy.Parameter(
+            displayName="Origins Maximum Batch Size",
+            name="batch_size_factor",
+            datatype="GPLong",
+            parameterType="Required",
+            direction="Input")
+        param16.value = 500
+        
+        params = [param0, param1, param2, param3, param4, param5, param6, param7, param8,\
+                  param9, param10, param11, param12, param13, param14, param15, param16]
+        return params
+    
+    def isLicensed(self):
+        #Set whether tool is licensed to execute
+        try:
+            if arcpy.CheckExtension("Network") != "Available":
+                raise Exception
+        except Exception:
+                return False  # tool cannot be executed
+
+        return True  # tool can be executed
+
+    def updateParameters(self, parameters):
+        
+        if parameters[0].altered:
+            network_travel_modes = arcpy.nax.GetTravelModes(parameters[0].valueAsText)
+            fields1 = list(network_travel_modes)
+            parameters[1].filter.list = fields1
+            network_describe = arcpy.Describe(parameters[0].valueAsText)
+            network_sources = network_describe.sources
+            network_source_features = [source.name for source in network_sources]
+            parameters[7].filters[0].list = list(network_source_features)
+            parameters[8].filters[0].list = list(network_source_features)
+            parameters[12].filters[0].list = list(network_source_features)
+            parameters[13].filters[0].list = list(network_source_features)
+        
+        if parameters[4].altered:
+            fields5 = [f.name for f in arcpy.ListFields(parameters[4].valueAsText)]
+            parameters[5].filter.list = fields5
+        else:
+            parameters[5].filter.list = []
+        
+        if parameters[9].altered:
+            fields10 = [f.name for f in arcpy.ListFields(parameters[9].valueAsText)]
+            parameters[10].filter.list = fields10
+        else:
+            parameters[10].filter.list = []
+        
+        return
+
+    def updateMessages(self, parameters):
+        return
+
+    def execute(self, parameters, messages):
+        network = parameters[0].valueAsText
+        travel_mode = parameters[1].valueAsText
+        cutoff = parameters[2].valueAsText
+        time_of_day = parameters[3].value
+        origins_i_input = parameters[4].valueAsText
+        i_id_field = parameters[5].valueAsText
+        search_tolerance_i = parameters[6].value
+        search_criteria_i = parameters[7].value
+        search_query_i = parameters[8].value
+        destinations_j_input = parameters[9].valueAsText
+        j_id_field = parameters[10].valueAsText
+        search_tolerance_j = parameters[11].value
+        search_criteria_j = parameters[12].value
+        search_query_j = parameters[13].value
+        output_dir = parameters[14].valueAsText
+        output_gdb = parameters[15].valueAsText
+        batch_size_factor = parameters[16].value
+        
+        # get network file path
+        input_network_desc = arcpy.Describe(network)
+        input_network = os.path.join(input_network_desc.path+"/"+input_network_desc.baseName)
+        
+        # execute
+        odcm_main.main(input_network, travel_mode, cutoff, time_of_day,
+                              origins_i_input, i_id_field,
+                              search_tolerance_i, search_criteria_i, search_query_i,
+                              destinations_j_input, j_id_field,
+                              search_tolerance_j, search_criteria_j, search_query_j,
+                              batch_size_factor, output_dir, output_gdb)
+                              
+        arcpy.AddMessage("Finished odcm calculation")
         return
