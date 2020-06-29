@@ -1,4 +1,4 @@
-# Accessibility Calculator for ArcGIS Pro v2.01
+# Accessibility Calculator for ArcGIS Pro v2.1
 # Christopher D. Higgins
 # Department of Human Geography
 # University of Toronto Scarborough
