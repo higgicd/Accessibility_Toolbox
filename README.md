@@ -10,6 +10,10 @@ The Accessibility Toolbox contains two tools. The first is the **Accessibility C
 The second is an interactive **Accessibility Toolbox** R Notebook that visualizes the 5 impedance functions from Kwan (1998) and 28 impedance measures to aid in the selection and customization of accessibility cost functions. Customized parameters can be implemented in the ArcGIS tool's python code.
 
 ## Version History
+- ```v2.1``` added the *OD Cost Matrix Calculator for ArcGIS Pro 2.4 Multiprocessing* for the rapid calculation of raw origin-destination cost matrices
+  - takes full advantage of your multi-core PC
+  - joins back in the original origins ID for further analysis
+  - note - the final merge of all the worker matrices might take a while for very large analyses with billions of rows as this operation is still single-threaded
 - ```v2.0``` the *Accessibility Calculator* for ArcGIS Pro has been entirely rewritten and is now **4 to 5 times faster**
   - introduced a new version of the tool called *Accessibility Calculator Pro MP* for ArcGIS Pro 2.4 or above that takes advantage of **parallel processing** and data access cursors for dramatic improvements in processing time
   - main functions are now moved to the ```access_calc_main.py``` file which can be run from either the Python toolbox or command line
