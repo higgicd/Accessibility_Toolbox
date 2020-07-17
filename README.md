@@ -5,7 +5,7 @@ This repository contains the tools, code, and data to support the paper *Accessi
 
 <img width="900" alt="fig_2" src="https://github.com/higgicd/Accessibility_Toolbox/blob/master/assets/fig_2.jpg">
 
-The Accessibility Toolbox contains two tools. The first is the **Accessibility Calculator** Python toolbox for ArcGIS Pro and 10x that simplifies the steps involved in a place-based accessibility workflow. The Pro version of the tool is written for multiprocessing. As of version ```2.0```, the 10x tool has been moved to the [legacy tools](https://github.com/higgicd/Accessibility_Toolbox/tree/master/legacy_tools) folder.
+The Accessibility Toolbox contains two tools. The first is the **Accessibility Calculator** Python toolbox for ArcGIS Pro and 10x that simplifies the steps involved in a place-based accessibility workflow. The Pro version of the tool is written for multiprocessing. As of version ```2.0```, the 10x tool has been moved to the [legacy tools](https://github.com/higgicd/Accessibility_Toolbox/tree/master/legacy_tools) folder. Follow [these steps](https://pro.arcgis.com/en/pro-app/help/analysis/geoprocessing/basics/use-a-custom-geoprocessing-tool.htm) to add the ```.pyt``` toolbox to your project or edit and run via the command line.
 
 The second is an interactive **Accessibility Toolbox** R Notebook that visualizes the 5 impedance functions from Kwan (1998) and 28 impedance measures to aid in the selection and customization of accessibility cost functions. Customized parameters can be implemented in the ArcGIS tool's python code.
 
