@@ -9,24 +9,13 @@ The Accessibility Toolbox contains two tools. The first is the **Accessibility C
 
 The second is an interactive **Accessibility Toolbox** R Notebook that visualizes the 5 impedance functions from Kwan (1998) and 28 impedance measures to aid in the selection and customization of accessibility cost functions. Customized parameters can be implemented in the ArcGIS tool's python code.
 
-## Version History
+## Updates
 - ```v2.1``` added the *OD Cost Matrix Calculator for ArcGIS Pro 2.4 Multiprocessing* for the rapid calculation of raw origin-destination cost matrices
   - takes full advantage of your multi-core PC
   - joins back in the original origins ID for further analysis
-  - note - the final merge of all the worker matrices might take a while for very large analyses with billions of rows as this operation is still single-threaded
-- ```v2.0``` the *Accessibility Calculator* for ArcGIS Pro has been entirely rewritten and is now **4 to 5 times faster**
-  - introduced a new version of the tool called *Accessibility Calculator Pro MP* for ArcGIS Pro 2.4 or above that takes advantage of **parallel processing** and data access cursors for dramatic improvements in processing time
-  - main functions are now moved to the ```access_calc_main.py``` file which can be run from either the Python toolbox or command line
-  - impedance parameters are now stored in their own separate ```parameters.py``` file and streamlined for easy editing
-  - the tool now includes ```.xml``` files for help pop-ups in the geoprocessing window
-  - the *Accessibility Calculator* for ArcGIS 10x and earlier versions of ArcGIS Pro have been moved to the ```legacy_tools``` folder
-- ```v1.1``` altered the *Accessibility Calculator* for 10x and Pro:
-  - introduced a new version of the *Accessibility Calculator for ArcGIS Pro 2.4* that uses the new [arcpy.nax](https://pro.arcgis.com/en/pro-app/arcpy/network-analyst/what-is-the-network-analyst-module.htm) Network Analyst module introduced in ArcGIS Pro 2.4. This module stores intermediate network analyst data ```in_memory``` and promises to be [significantly faster](https://pro.arcgis.com/en/pro-app/arcpy/network-analyst/choosing-between-the-two-modules-arcpy-nax-versus-arcpy-na-.htm). To take advantage of this, the new 2.4 version of the *Accessibility Calculator* also stores its intermediate data ```in_memory``` and together these changes result in about a 25% improvement in speed versus the old version of the tool (this on a PC with an SSD - the savings will be even more dramatic with a spinning drive). However, if you are memory constrained, stick to the older version of the tool.
-  - fixed an error related to assigning sequential IDs in the *batch calculator* for Pro introduced after updating to ArcGIS Pro 2.4
-  - changed the ```search criteria``` and ```search query``` parameters to valueTables to make it much easier to specify search restrictions
-  - changed the ```search tolerance``` parameters to proper linear unit data types
-  - changed the ```departure time``` parameter to a proper datetime format for the Pro toolboxes
-- ```v1.0``` original release alongside the paper in *Transport Findings* 
+  - note - the final merge of all the worker matrices might take a while for very large analyses with billions of rows as this operation is still single-threaded  
+  
+See [version history](https://github.com/higgicd/Accessibility_Toolbox/blob/master/version_history.md) for previous releases
 
 ## Calculating Accessibility in ArcGIS
 The Accessibility Calculator has several inputs:  
