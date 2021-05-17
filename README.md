@@ -13,7 +13,7 @@ The second is an interactive **Accessibility Toolbox** R Notebook that visualize
 - ```v2.2``` added the *Accessibility Calculator for R* notebook that makes use of [r5r](https://github.com/ipeaGIT/r5r) to calculate accessibility entirely within the notebook
   - free and open-source
   - rapid calculation time
-  - custom batching algorithm for large-scale analysis on memory-constrained systems
+  - batching algorithm using [disk.frame](https://github.com/xiaodaigh/disk.frame) to enable large-scale analyses on memory-constrained systems
   - fully reproducible code for the sample analysis of census block accessibility to jobs in New York City
 
 - ```v2.1``` added the *OD Cost Matrix Calculator for ArcGIS Pro 2.4 Multiprocessing* for the rapid calculation of raw origin-destination cost matrices
