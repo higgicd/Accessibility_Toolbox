@@ -1,0 +1,692 @@
+---
+title: "Accessibility Calculator for R"
+author:
+  - name: "Christopher D. Higgins"
+    email: cd.higgins@utoronto.ca
+    affiliation: University of Toronto
+output: html_notebook
+---
+
+# ABSTRACT
+Analyses of place-based accessibility undertaken in the popular ArcGIS environment require many time-consuming and tedious steps. Moreover, questions persist over the selection of an impedance function and cost or cut-off parameters. In response, this paper details a new Accessibility Toolbox for R and ArcGIS that includes a Python tool for conducting accessibility analyses and an interactive R Notebook that enables the visualization and customization of impedance functions and parameters. Using this toolbox, researchers and practitioners can simplify their accessibility analysis workflow and make better decisions about the specification and customization of travel impedance for their study context.
+
+# KEYWORDS
+accessibility, spatial interaction, travel behavior, travel impedance, distance decay function
+
+```{r setup, include=FALSE}
+# the r5r package requires Java Development Kit version 11, which can be downloaded from https://www.oracle.com/java/technologies/javase-jdk11-downloads.html
+
+# load packages
+library(corrplot)
+library(disk.frame)
+library(httr)
+library(knitr)
+library(lodes)
+#devtools::install_git("https://github.com/hrbrmstr/lodes.git") # if you need to download
+library(tidyverse)
+library(r5r)
+library(sf)
+library(tidycensus)
+library(tidytransit)
+library(tmap)
+
+# setup options
+setup_disk.frame() # setup disk.frame parallel computing
+options(future.globals.maxSize = Inf) # allow disk.frame threads to talk to eachother without limits
+options(java.parameters = "-Xmx6G") # assign memory for r5r to work with
+tmap_mode("plot")
+
+# setup keys
+census_api_key("INSERT_KEY_HERE") # get from https://api.census.gov/data/key_signup.html
+interline_token <- "INSERT_TOKEN_HERE" # for OSM extract from https://www.interline.io/osm/extracts/
+
+# create data directories
+dir.create("./data") # for storing data
+dir.create("./df") # for storing od matrix as a disk.frame
+dir.create("./r5_graph") # for the r5 network graph
+r5_path <- file.path("./r5_graph")
+```
+
+# RESEARCH QUESTIONS AND HYPOTHESES
+Accessibility can be defined as the potential for reaching spatially distributed opportunities while considering the difficulty involved in traveling to them (Páez, Scott, and Morency, 2012). Several families of accessibility measures have been established since the pioneering work of Hansen (1959), including infrastructure-based, person-based, place-based, and utility-based (Geurs and van Wee, 2004). Of these, place-based measures are arguably the most common and can be operationalized as:
+
+$$
+A_i = \sum_{j}{O_jf(t_{ij})}
+$$
+where the accessibility $A$ of origin $i$ is the sum of all opportunities $O$ available at destinations $j$ weighted by some function of the travel time $t_{ij}$ between $i$ and $j$.
+
+Despite several decades of research into place-based accessibility, researchers, students, and practitioners interested in accessibility analysis face practical and empirical challenges. On the practical side, compared to simple isochrones, analyses of spatial interaction undertaken in the popular ArcGIS environment require many time-consuming and tedious steps. On the empirical side, questions persist over the selection of an impedance function and cost or cut-off parameters. Ideally, these statistical parameters should be derived from calibrated trip generation models, but in the absence of such data, Kwan (1998) argues that the use of customized functions and parameters based on theory is preferable to arbitrary assignment.
+
+To promote a more "accessible" solution for accessibility analyses, this paper details a new Accessibility Toolbox for R and ArcGIS. The Python toolbox for ArcGIS simplifies the steps involved in a place-based accessibility workflow and comes coded with 5 impedance functions and 28 impedance measures for accessibility calculation. The interactive R Notebook version of this paper visualizes the function families and specifications and allows users to customize their parameters in accordance with theory and experience with their study area. These parameters can then be implemented in the ArcGIS tool’s Python code.
+
+# METHODS
+The accessibility toolbox implements the five different impedance functions from Kwan (1998):
+
+$$
+\begin{aligned}
+  \text{Inverse Power: } &f(t_{ij})= \left\{
+      \begin{array}{ll}
+          1 & \quad \text{for }t_{ij} < 1 \\
+          t_{ij}^{-\beta} & \quad \text{otherwise}
+      \end{array}
+    \right.\\
+  \text{Negative Exponential: } &f(t_{ij}) = e^{(-\beta t_{ij})} \\
+  \text{Modified Gaussian: } &f(t_{ij})= e^{(-t_{ij}^2/\beta)} \\
+  \text{Cumulative Opportunities Rectangular: } &f(t_{ij})= \left\{
+      \begin{array}{ll}
+          1 & \quad \text{for }t_{ij} \leq \bar{t} \\
+          0 & \quad \text{otherwise}
+      \end{array}
+    \right.\\
+  \text{Cumulative Opportunities Linear: } &f(t_{ij})= \left\{
+      \begin{array}{ll}
+          (1-t_{ij}/\bar{t}) & \quad \text{for }t_{ij} \leq \bar{t} \\
+          0 & \quad \text{otherwise}
+      \end{array}
+    \right.
+\end{aligned}
+$$
+
+The inverse power, negative exponential, and modified Gaussian functions continuously discount the weight of opportunities as travel time increases using an impedance parameter $\beta$ that accounts for the cost of travel.
+
+```{r travel time, echo=FALSE}
+# first define the travel time increment, in this case from 0 to 60 minutes
+t_ij <- data.frame(t_ij = seq(from = 0, to = 60, by=1))
+```
+
+With a foundation in early gravity models of spatial interaction (e.g. Stewart, 1948; Zipf, 1949), the inverse power function produces a rapid decline in the weight of opportunities as travel time increases. While power functions draw analogs to Newtonian physics, their theoretical relevance to human travel behavior has been questioned (Sen and Smith, 1995).
+
+```{r inverse power function, echo=FALSE}
+power_f <- function(t_ij,b0){ifelse(test = t_ij < 1, yes = 1, no = t_ij^-b0)}
+
+POW <- list(POW0_8 = function(t_ij){power_f(t_ij, b0 = 0.8)},
+            POW1_0 = function(t_ij){power_f(t_ij, b0 = 1.0)},
+            POW1_5 = function(t_ij){power_f(t_ij, b0 = 1.5)},
+            POW2_0 = function(t_ij){power_f(t_ij, b0 = 2.0)},
+            POW_CUS = function(t_ij){power_f(t_ij, b0 = 0.5)}) # custom - set your own parameter
+
+# plot different normalized functions
+ggplot((t_ij), aes(t_ij)) +
+  stat_function(fun=POW$POW0_8, aes(colour="POW0_8"), size=1) +
+  stat_function(fun=POW$POW1_0, aes(colour="POW1_0"), size=1) +
+  stat_function(fun=POW$POW1_5, aes(colour="POW1_5"), size=1) +
+  stat_function(fun=POW$POW2_0, aes(colour="POW2_0"), size=1) +
+  stat_function(fun=POW$POW_CUS, aes(colour="POW_CUS"), size=1, linetype="dashed") +
+  scale_color_discrete(limits = names(POW)) +
+  xlab("travel time (minutes)") +
+  scale_x_continuous(breaks = seq(min(t_ij), max(t_ij), by = 10)) +
+  ylab("impedance weight") + 
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25)) +
+  theme(legend.position = c(.95, .95),
+  legend.justification = c("right", "top"),
+  legend.title = element_blank()) +
+  labs(title = "Inverse Power Function")
+```
+
+The negative exponential function is more gradual and based on its strong theoretical foundations in entropy maximization (Wilson, 1971) and choice behavior theory (Fotheringham and O’Kelly, 1989), this function appears to have become somewhat of a de-facto standard in applied accessibility analysis.
+
+```{r negative exponential function, echo=FALSE}
+neg_exp_f = function(t_ij,b0){exp(-b0*t_ij)}
+
+NEG_EXP <- list(EXP0_12 = function(t_ij){neg_exp_f(t_ij, b0 = 0.12)},
+                EXP0_15 = function(t_ij){neg_exp_f(t_ij, b0 = 0.15)},
+                EXP0_22 = function(t_ij){neg_exp_f(t_ij, b0 = 0.22)},
+                EXP0_45 = function(t_ij){neg_exp_f(t_ij, b0 = 0.45)},
+                EXP_CUS = function(t_ij){neg_exp_f(t_ij, b0 = 0.10)}, # custom - set your own parameter
+                HN1997 = function(t_ij){neg_exp_f(t_ij, b0 = 0.1813)}) # from Handy and Niemeier (1997)
+
+# plot different normalized functions
+ggplot((t_ij), aes(t_ij)) +
+  stat_function(fun=NEG_EXP$EXP0_12, aes(colour="EXP0_12"), size=1) +
+  stat_function(fun=NEG_EXP$EXP0_15, aes(colour="EXP0_15"), size=1) +
+  stat_function(fun=NEG_EXP$EXP0_22, aes(colour="EXP0_22"), size=1) +
+  stat_function(fun=NEG_EXP$EXP0_45, aes(colour="EXP0_45"), size=1) +
+  stat_function(fun=NEG_EXP$EXP_CUS, aes(colour="EXP_CUS"), size=1, linetype="dashed") +
+  stat_function(fun=NEG_EXP$HN1997, aes(colour="HN1997"), size=1, linetype="longdash") +
+  scale_color_discrete(limits = names(NEG_EXP)) +
+  xlab("travel time (minutes)") +
+  scale_x_continuous(breaks = seq(min(t_ij), max(t_ij), by = 10)) +
+  ylab("impedance weight") + 
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25)) +
+  theme(legend.position = c(.95, .95),
+  legend.justification = c("right", "top"),
+  legend.title = element_blank()) +
+  labs(title = "Negative Exponential Function")
+```
+
+The modified Gaussian function exhibits a much more gradual rate of decline around its origin and a slower rate of decline overall. While Ingram (1971) argues these properties make the function superior to its inverse power and negative exponential counterparts for explaining observed travel behavior, it appears rarely used in the applied literature.
+
+```{r modified gaussian function, echo=FALSE}
+mgaus_f = function(t_ij,b0){exp(-t_ij^2/b0)}
+
+MGAUS <- list(MGAUS10 = function(t_ij){mgaus_f(t_ij, b0 = 10)},
+              MGAUS40 = function(t_ij){mgaus_f(t_ij, b0 = 40)},
+              MGAUS100 = function(t_ij){mgaus_f(t_ij, b0 = 100)},
+              MGAUS180 = function(t_ij){mgaus_f(t_ij, b0 = 180)},
+              MGAUSCUS = function(t_ij){mgaus_f(t_ij, b0 = 360)}) # custom - set your own parameter
+
+# plot different normalized functions
+ggplot((t_ij), aes(t_ij)) +
+  stat_function(fun=MGAUS$MGAUS10, aes(colour="MGAUS10"), size=1) +
+  stat_function(fun=MGAUS$MGAUS40, aes(colour="MGAUS40"), size=1) +
+  stat_function(fun=MGAUS$MGAUS100, aes(colour="MGAUS100"), size=1) +
+  stat_function(fun=MGAUS$MGAUS180, aes(colour="MGAUS180"), size=1) +
+  stat_function(fun=MGAUS$MGAUSCUS, aes(colour="MGAUSCUS"), size=1, linetype="dashed") +
+  scale_color_discrete(limits = names(MGAUS)) +
+  xlab("travel time (minutes)") +
+  scale_x_continuous(breaks = seq(min(t_ij), max(t_ij), by = 10)) +
+  ylab("impedance weight") + 
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25)) +
+  theme(legend.position = c(.95, .95),
+  legend.justification = c("right", "top"),
+  legend.title = element_blank()) +
+  labs(title = "Modified Gaussian Function")
+```
+
+The cumulative rectangular function is an isochronic measure that applies a constant weight to all opportunities reachable within some travel time window whose maximum is defined by $\bar{t}$. Although the application of a constant weight runs counter to the geographic principle of distance deterrence or decay that underpins travel behavior theory, such functions remain popular due to their ease of interpretation.
+
+```{r cumulative rectangular function, echo=FALSE}
+cumr_f = function(t_ij,t_bar){ifelse(test = t_ij <= t_bar, yes = 1, no = 0)}
+
+CUMR <- list(CUMR10 = function(t_ij){cumr_f(t_ij, t_bar = 10)},
+             CUMR20 = function(t_ij){cumr_f(t_ij, t_bar = 20)},
+             CUMR30 = function(t_ij){cumr_f(t_ij, t_bar = 30)},
+             CUMR40 = function(t_ij){cumr_f(t_ij, t_bar = 40)},
+             CUMRCUS = function(t_ij){cumr_f(t_ij, t_bar = 45)}) # custom - set your own parameter
+
+# plot different normalized functions
+ggplot((t_ij), aes(t_ij)) +
+  stat_function(fun=CUMR$CUMR10, aes(colour="CUMR10"), size=1) +
+  stat_function(fun=CUMR$CUMR20, aes(colour="CUMR20"), size=1) +
+  stat_function(fun=CUMR$CUMR30, aes(colour="CUMR30"), size=1) +
+  stat_function(fun=CUMR$CUMR40, aes(colour="CUMR40"), size=1) +
+  stat_function(fun=CUMR$CUMRCUS, aes(colour="CUMRCUS"), size=1, linetype="dashed") +
+  scale_color_discrete(limits = names(CUMR)) +
+  xlab("travel time (minutes)") +
+  scale_x_continuous(breaks = seq(min(t_ij), max(t_ij), by = 10)) +
+  ylab("impedance weight") + 
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25)) +
+  theme(legend.position = c(.95, .95),
+  legend.justification = c("right", "top"),
+  legend.title = element_blank()) +
+  labs(title = "Cumulative Rectangular Function")
+```
+
+Finally, the cumulative linear function is a hybrid of the continuous and cumulative approaches, linearly discounting opportunities within an isochrone.
+
+```{r cumulative linear function, echo=FALSE}
+cuml_f = function(t_ij,t_bar){ifelse(test = t_ij <= t_bar, yes = (1-t_ij/t_bar), no = 0)}
+
+CUML <- list(CUML10 = function(t_ij){cuml_f(t_ij, t_bar = 10)},
+             CUML20 = function(t_ij){cuml_f(t_ij, t_bar = 20)},
+             CUML30 = function(t_ij){cuml_f(t_ij, t_bar = 30)},
+             CUML40 = function(t_ij){cuml_f(t_ij, t_bar = 40)},
+             CUMLCUS = function(t_ij){cuml_f(t_ij, t_bar = 45)}) # custom - set your own parameter
+
+# plot different normalized functions
+ggplot((t_ij), aes(t_ij)) +
+  stat_function(fun=CUML$CUML10, aes(colour="CUML10"), size=1) +
+  stat_function(fun=CUML$CUML20, aes(colour="CUML20"), size=1) +
+  stat_function(fun=CUML$CUML30, aes(colour="CUML30"), size=1) +
+  stat_function(fun=CUML$CUML40, aes(colour="CUML40"), size=1) +
+  stat_function(fun=CUML$CUMLCUS, aes(colour="CUMLCUS"), size=1, linetype="dashed") +
+  scale_color_discrete(limits = names(CUML)) +
+  xlab("travel time (minutes)") +
+  scale_x_continuous(breaks = seq(min(t_ij), max(t_ij), by = 10)) +
+  ylab("impedance weight") + 
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25)) +
+  theme(legend.position = c(.95, .95),
+  legend.justification = c("right", "top"),
+  legend.title = element_blank()) +
+  labs(title = "Cumulative Linear Function")
+```
+
+This set of impedance functions is by no means exhaustive. Numerous alternatives have been proposed, such as the exponential-normal, exponential-square root, and log-normal functions reviewed by Reggiani et al. (2011) and the Box-Cox, Tanner, and Richards functions reviewed by Martínez and Viegas (2013). Although these functions could be implemented in future iterations of the tool, the present paper’s focus on the functions specified in Kwan (1998) introduces some of the most widely used measures of impedance in applied accessibility analysis.
+
+Kwan (1998) sets four impedance parameters for each continuous function designed to produce a weight of about 0.1 at travel times of 5, 10, 15, and 20 minutes respectively. Figure 1 recreates a figure from Kwan (1998) to visualize parameter values for the 5 functions: the inverse power function with $\beta = 2$ (POW2_0); the negative exponential function with $\beta = 0.15$ (EXP0_15); the modified Gaussian function with $\beta = 180$ (MGAUS180); and the cumulative rectangular (CUMR40) and linear (CUML40) functions with $\bar{t}$ set to 40 minutes.
+
+```{r figure1, echo=FALSE, fig.cap="\\label{fig:figure1}Figure 1. Impedance Function Comparison"}
+ggplot((t_ij), aes(t_ij)) +
+  stat_function(fun=POW$POW2_0, aes(colour="POW2_0"), size=1) +
+  stat_function(fun=NEG_EXP$EXP0_15, aes(colour="EXP0_15"), size=1, linetype="dashed") +
+  stat_function(fun=MGAUS$MGAUS180, aes(colour="MGAUS180"), size=1, linetype="dotdash") +
+  stat_function(fun=CUML$CUML40, aes(colour="CUML40"), size=1, linetype="twodash") +
+  stat_function(fun=CUMR$CUMR40, aes(colour="CUMR40"), size=1, linetype="longdash") +
+  xlab("travel time (minutes)") +
+  scale_x_continuous(breaks = seq(min(t_ij), max(t_ij), by = 10)) +
+  ylab("impedance weight") + 
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25)) +
+  theme(legend.position = c(.95, .95),
+  legend.justification = c("right", "top"),
+  legend.title = element_blank()) +
+  labs(title = "Figure 1. Impedance Function Comparison")
+```
+
+Calculating place-based accessibility using the `R5R` package below requires the creation of a network dataset using data from Open Street Map (OSM) and General Transit Feed Specification (GTFS) files; input origins and destinations (point or polygon); a numerical attribute representing destination opportunities, and the selection of one or more of the 28 impedance functions implemented in the tool (Table 1) to weight the attractiveness of the opportunities. In addition to Kwan’s (1998) impedance specifications, the toolbox also implements Handy and Niemeier's (1997) negative exponential specification calibrated to walking trips for convenience shopping in Oakland, CA in 1980 and several additional popular cumulative rectangular measures.
+
+```{r table1, echo=FALSE}
+table1 <- read.csv("./data/table1.csv")
+kable(table1, caption = "Table 1. Impedance Measures in the Accessibility Toolbox", col.names = c("Impedance<br/>Measure", "Impedance<br/>Parameter ", "<br/>Source"), escape = FALSE, format = "pandoc")
+```
+
+# DEMONSTRATION DATA: NEW YORK CITY
+## Download and Prepare Census Data
+
+```{r load RData, echo = FALSE}
+# you can run the code below to download the data (remember your api keys!)
+# or load it pre-processed from here:
+load(file = "./data/nyc_cb_poly.RData")
+```
+
+The first step is to download the census data that will be used as indicators of opportunities. This includes downloading census population and employment data at the block level for New York City using the `tidycensus` and `lodes` packages respectively:
+
+```{r download census population and employment data, include = FALSE, eval = FALSE}
+# download total population from the 2010 decennial census
+ny_pop <- get_decennial(geography = "block", 
+                        year = "2010", 
+                        variables = "P001001", 
+                        state = "NY", 
+                        county = c("061", "005", "047", "081", "085")) %>%
+  rename(Block_GEOID = GEOID, total_pop = value) %>%
+  mutate(Block_GEOID = as.character(Block_GEOID)) %>%
+  select(Block_GEOID, total_pop)
+
+# download longitudinal origin-destination employment survey data
+ny_lodes <- read_lodes(state = "ny", 
+                       type = "workplace", # workplace location
+                       segment = "S000",# all segments of employment
+                       job_type = "JT00", # all job types
+                       year = "2010", 
+                       download_dir = "./data") %>%
+  rename(Block_GEOID = w_geocode, total_emp = C000) %>% 
+  mutate(Block_GEOID = as.character(Block_GEOID)) %>%
+  select(Block_GEOID, total_emp)
+```
+
+Next, download census block geographic boundaries from New York City's Open Data catalogue, prepare standardized GEOIDs for joining, and join the population and employment data:
+
+```{r download and prepare census boundaries, include = FALSE, eval = FALSE}
+# download census block boundaries
+GET("https://data.cityofnewyork.us/api/geospatial/v2h8-6mxf?method=export&format=Original",
+    write_disk("./data/NYC_CensusBlocks.zip", overwrite=TRUE))
+
+# unzip
+unzip(zipfile = "./data/NYC_CensusBlocks.zip", exdir = "./data")
+
+# load census blocks poly
+nyc_cb_poly <- st_read("./data/nycb2010_21a/nycb2010.shp") %>% 
+  st_transform(crs = 26918) %>% # project to NAD 1983 Zone 18N
+  
+  # create and set GEOID fields: see https://www.census.gov/programs-surveys/geography/guidance/geo-identifiers.html
+  mutate(StateCode = "36", # create StateCode
+         CountyCode = case_when(BoroCode == "1" ~ "061", # create CountyCode
+                                BoroCode == "2" ~ "005",
+                                BoroCode == "3" ~ "047",
+                                BoroCode == "4" ~ "081",
+                                BoroCode == "5" ~ "085"),
+         BlockGroup = substr(CB2010, 1, 1)) %>% # create a BlockGroup code from first digit of Block ID
+  
+  # unite into a block geoid
+  unite(Block_GEOID, c(StateCode, CountyCode, CT2010, CB2010), sep = "") %>% 
+  
+  # join population and employment
+  left_join(ny_pop, by = "Block_GEOID") %>%
+  left_join(ny_lodes, by = "Block_GEOID") %>%
+  
+  # zero-out any NAs
+  mutate(total_pop = ifelse(is.na(total_pop), 0, total_pop),
+         total_emp = ifelse(is.na(total_emp), 0, total_emp))
+```
+
+## Download Travel Network Data
+
+With the census data prepared, the second step is to download the travel network data. This consists of an extract of Open Street Map (OSM) data from [interline.io](https://www.interline.io/osm/extracts/):
+
+```{r download osm, include=FALSE}
+# Download OpenStreetMap data for the NYC metro area from Interline map extracts
+download.file(url = paste0("https://app.interline.io/osm_extracts/download_latest?string_id=new-york_new-york&data_format=pbf&api_token=", interline_token),
+              destfile = file.path(r5_path, "osm.pbf"), mode = "wb")
+```
+
+And General Transit Feed Specification (GTFS) files for New York City:
+
+```{r download gtfs, include = FALSE, eval = FALSE}
+# I have included a gtfs package that matches the analysis datetime in the r5_graph folder. You can download a new one with this code:
+# Download GTFS files for regional transit providers
+download.file(url = "http://web.mta.info/developers/data/nyct/subway/google_transit.zip", 
+              destfile = file.path(r5_path, "nyct_subway.zip"), mode = "wb")
+```
+
+This sample analysis focuses on the New York City subway only, but other GTFS files for commuter rail and bus service can easily be added.
+
+```{r extra gtfs packages, include = FALSE, eval = FALSE}
+# for bus and commuter rail you can add these by un-commenting the code
+#download.file(url = "http://web.mta.info/developers/data/lirr/google_transit.zip", 
+#              destfile = file.path(r5_path, "lirr.zip"), mode = "wb")
+#download.file(url = "http://web.mta.info/developers/data/mnr/google_transit.zip", 
+#              destfile = file.path(r5_path, "mnr.zip"), mode = "wb")
+#download.file(url = "http://web.mta.info/developers/data/nyct/bus/google_transit_bronx.zip", 
+#              destfile = file.path(r5_path, "nyct_bus_bronx.zip"), mode = "wb")
+#download.file(url = "http://web.mta.info/developers/data/nyct/bus/google_transit_brooklyn.zip", 
+#              destfile = file.path(r5_path, "nyct_bus_brooklyn.zip"), mode = "wb")
+#download.file(url = "http://web.mta.info/developers/data/nyct/bus/google_transit_manhattan.zip", 
+#              destfile = file.path(r5_path, "nyct_bus_manhattan.zip"), mode = "wb")
+#download.file(url = "http://web.mta.info/developers/data/nyct/bus/google_transit_queens.zip", 
+#              destfile = file.path(r5_path, "nyct_bus_queens.zip"), mode = "wb")
+#download.file(url = "http://web.mta.info/developers/data/nyct/bus/google_transit_staten_island.zip", 
+#              destfile = file.path(r5_path, "nyct_bus_staten.zip"), mode = "wb")
+#download.file(url = "http://web.mta.info/developers/data/busco/google_transit.zip", 
+#              destfile = file.path(r5_path, "nyc_busco.zip"), mode = "wb")
+```
+
+We can query the characteristics of the subway GTFS data using the `summary.gtfs()` function from the `tidytransit` package:
+
+```{r echo = FALSE}
+nyc_subway_gtfs <- read_gtfs(path = file.path(r5_path, "nyct_subway.zip"))
+
+summary(nyc_subway_gtfs)
+```
+
+This is useful for ascertaining the service dates contained within the GTFS calendar. Take note of the calendar range, as you will have to specify a date and time that falls within this interval when running the origin-destination matrix calculation below.
+
+## Define Accessibility Parameters
+
+Using this set of variable definitions, users can set the key parameters that define how the origin-destination matrix and accessibilities are calculated. This includes supplying the input origins and destinations (as `sf` objects), defining relevant ID and destination opportunities fields, and selecting one or more impedance functions, travel modes, a date and time of departure (within the calendar dates of the supplied GTFS files), and maximum walking distance and trip duration.
+
+In addition, a `chunk_size` parameter is used to control batching as the base `travel_time_matrix` function from `R5R` is employed here within a batching work flow built around `disk.frame`. In this formulation, the matrix is calculated for batches of origins to all destinations reachable within the travel time window for the selected modes. While `r5r`` works fastest with a single set of origins, this batching is implemented to save memory and enable the calculation of very large matrices. In addition, the resulting matrix is compressed and saved to disk for future use. Depending on your particular hardware configuration, you can change the number of origins considered in each batch.
+
+```{r define parameters, warning = FALSE}
+# 1. Generalize calls to input simple features
+# origins
+origins_sf <-  nyc_cb_poly
+origins_id_field <- "Block_GEOID"
+
+# destinations
+destinations_sf <-  nyc_cb_poly
+destinations_id_field <- "Block_GEOID"
+o_j_field <- "total_emp"
+
+# select your impedance functions
+selected_f <- c("POW2_0", "EXP0_15", "MGAUS180", "CUML40", "CUMR40") # pick one or more impedance functions
+
+# 2. R5 Travel Time Matrix Options. See https://rdrr.io/cran/r5r/man/travel_time_matrix.html for more detail
+# R5 allows for multiple combinations of transport modes. The options include:
+## Transit modes
+# TRAM, SUBWAY, RAIL, BUS, FERRY, CABLE_CAR, GONDOLA, FUNICULAR. 
+# The option 'TRANSIT' automatically considers all public transport modes available.
+
+## Non transit modes
+# WALK, BICYCLE, CAR, BICYCLE_RENT, CAR_PARK
+
+# define your travel modes
+travel_mode <- c("WALK", "TRANSIT")
+
+# egress mode
+mode_egress = "WALK" # Transport mode used after egress from public transport; it can be either 'WALK', 'BICYCLE', or 'CAR'. Defaults to "WALK"
+
+# walk speed
+walk_speed = 3.6 #Average walk speed in km/h. Defaults to 3.6 km/h
+
+# bike speed
+bike_speed = 12 # Average cycling speed in km/h. Defaults to 12 km/h
+  
+# max rides
+max_rides = 3 # The max number of public transport rides allowed in the same trip. Defaults to 3
+
+# level of traffic stress (cycling)
+max_lts = 2 # The maximum level of traffic stress that cyclists will tolerate. A value of 1 means cyclists will only travel through the quietest streets, while a value of 4 indicates cyclists can travel through any road; defaults to 2
+
+# define trip start datetime
+departure_datetime <- as.POSIXct("2021-03-22 08:00:00",  # must be within calendar range of gtfs 
+                                 format = "%Y-%m-%d %H:%M:%S", 
+                                 tz = "America/New_York") # see https://en.wikipedia.org/wiki/List_of_tz_database_time_zones for list of time zone codes
+
+# maximum walk distance (in metres)
+max_walk_dist = 4000
+
+# max trip duration (minutes)
+max_trip_duration = 120
+
+# processing batch size - how many origin rows to process at one time
+chunksize = 500 # how many origins to consider at one time; set to nrow(origins_sf) if you don't want to use
+
+# multithreading
+n_threads = Inf # The number of threads to use in parallel computing; defaults to use all available threads (Inf)
+```
+
+# Calculate Accessibility
+
+With the input data collected and parameters set, the next step is to calculate accessibility. This occurs over three steps: first, building the network for routing with R5; second, preparing the input data into a format that R5 expects; third, calculating the origin-destination matrix; and fourth, calculating and summarizing accessibility for the selected impedance functions. Everything is generalized/automated after this point - just click run!
+
+## Set Up R5 Routing
+
+First, the network graph will be created.
+
+```{r build graph, include = FALSE}
+r5_network <- setup_r5(data_path = r5_path, verbose = FALSE)
+```
+
+## Prepare Input Data for Analysis
+
+Second, the input data are converted to centroids and transformed to the WGS 1984 geographic coordinate system. To save computational time, only destinations with opportunities are considered. 
+
+```{r prepare input data for r5r, warning = FALSE, include = FALSE}
+# assemble all impedance functions into a list
+impedance_f <- c(POW, NEG_EXP, MGAUS, CUMR, CUML)
+
+# ORIGINS
+# create input sf object and change to crs 4326 for origins
+origins_sf <- origins_sf %>% 
+  select(all_of(origins_id_field)) %>% 
+  rename(id = all_of(origins_id_field))
+
+# convert origins to points for r5r
+origins_sf_point <- origins_sf %>%
+  st_centroid() %>% # to centroids
+  st_transform(crs = 4326) # transform to lat-longs
+
+# save origin centroids in format expected by R5R (id, lon, lat)
+origins_i <- cbind(as.data.frame(origins_sf_point), st_coordinates(origins_sf_point)) %>%
+  rename(lon = X, lat = Y) %>%
+  select(id, lon, lat)
+
+# DESTINATIONS
+# create input sf object and change to crs 4326 for destinations
+destinations_sf <- destinations_sf %>% 
+  select(all_of(c(destinations_id_field, o_j_field))) %>% 
+  rename(id = all_of(destinations_id_field), o_j = all_of(o_j_field))
+
+# convert destinations to points for r5r
+destinations_sf_point <- destinations_sf %>%
+  st_centroid() %>% # to centroids
+  st_transform(crs = 4326) # transform to lat-longs
+  
+# prepare destination opportunities for joining to the r5r output
+opportunities_j <- as.data.frame(destinations_sf_point) %>% 
+  select(id, o_j) %>% 
+  rename(toId = id)
+
+destinations_j <- cbind(as.data.frame(destinations_sf_point), st_coordinates(destinations_sf_point)) %>%
+  filter(o_j > 0) %>% 
+  rename(lon = X, lat = Y) %>%
+  select(id, lon, lat)
+```
+
+## Calculate Origin-Destination Matrix
+
+Third, the origin-destination matrix is calculated in accordance with the travel and batching parameters set earlier.
+
+```{r calculate od matrix, include = FALSE}
+# set up batching 
+num_chunks = ceiling(nrow(origins_i)/chunksize)
+
+# create origin-destination pairs
+origins_chunks <- as.disk.frame(origins_i,
+                          outdir = "./df/origins_i",
+                          nchunks = num_chunks,
+                          overwrite = TRUE)
+
+start.time <- Sys.time()
+pb <- txtProgressBar(0, num_chunks, style = 3)
+
+for (i in 1:num_chunks){
+  origins_i_chunk <- get_chunk(origins_chunks, i)
+  ttm_chunk <- travel_time_matrix(r5r_core = r5_network,
+                          origins = origins_i_chunk,
+                          destinations = destinations_j,
+                          mode = travel_mode,
+                          mode_egress = mode_egress,
+                          departure_datetime = departure_datetime,
+                          max_walk_dist = max_walk_dist,
+                          max_trip_duration = max_trip_duration,
+                          walk_speed = walk_speed,
+                          bike_speed = bike_speed,
+                          max_rides = max_rides,
+                          max_lts = max_lts,
+                          n_threads = n_threads)
+  
+  # export output as disk.frame
+  ifelse(i == 1, output_df <- as.disk.frame(ttm_chunk,
+                                            nchunks = 1,
+                                            outdir = "./df/output_ttm",
+                                            compress = 100, # 100% compression rate - you can make this between 0-100
+                                            overwrite = TRUE),
+         add_chunk(output_df, ttm_chunk, chunk_id = i))
+  setTxtProgressBar(pb, i)
+}
+end.time <- Sys.time()
+print(paste0("OD matrix calculation took ", round(difftime(end.time, start.time, units = "mins"), digits = 2), " minutes..."))
+```
+
+## Calculate and Summarize Accessibility
+
+Finally, accessibilities are calculated using the selected impedance function(s) by iterating over all the batches of the origin-destination matrix.
+
+```{r calculate accessibility, message = FALSE, warning = FALSE, include = FALSE}
+# connect to the subway travel time matrix disk frame
+ttm <- disk.frame("./df/output_ttm")
+
+# calculate accessibility by iterating over disk.frame chunks
+accessibility <- list()
+
+pb <- txtProgressBar(0, nchunks(ttm), style = 3)
+
+for (i in 1:nchunks(ttm)){
+ df_chunk <- get_chunk(ttm, i) %>%
+   left_join(opportunities_j, by="toId") %>%
+   
+   # get pdf and cdf function weighted travel times
+   mutate(across(travel_time, .fns= impedance_f[selected_f], .names = "{fn}")) %>%
+   #mutate(across(travel_time, .fns= NEG_EXP, .names = "{fn}")) %>%
+   
+   # multiply weights by opportunities
+   mutate(across(all_of(selected_f), .fns = function(f) f*.$o_j)) %>%
+   
+   # group and summarize accessibility
+   group_by(fromId) %>%
+   summarize(across(all_of(selected_f), sum)) %>%
+   
+   # rename fromId to the GEOID for the nyc sf data
+   rename(id = fromId) %>%
+   collect()
+ 
+ accessibility[[i]] <- df_chunk
+ setTxtProgressBar(pb, i)}
+
+accessibility <- bind_rows(accessibility)
+```
+
+# FINDINGS
+
+In the sample analysis, the `travel_time_matrix()` function from the `r5r` package to calculate accessibility to employment reachable within 120 minutes from each of New York City’s 38,800 census blocks using a selection of 5 impedance measures from Kwan (1998). Mapped results are shown in Figure 2. The use of multiprocessing by R5 offers fast calculation of the OD matrix while the implementation of a batching workflow using `disk.frame` limits memory use for very large analyses and stores results on disk. 
+
+```{r figure2, fig.height=3.5, fig.width=12.5, fig.cap="\\label{fig:figure2}Figure 2. Walkable Employment Accessibility Comparison", message=FALSE, warning=FALSE, echo=FALSE}
+# join results to input_sf object
+input_sf_accessibility <- left_join(origins_sf, accessibility, by="id")
+
+# iterate through selected functions to create maps
+accessibility_maps <- list()
+
+for (i in selected_f){
+  map <- tm_shape(input_sf_accessibility) +
+    tm_fill(col = i, 
+            title = i, 
+            style = "cont", 
+            palette = "viridis") + 
+    tm_layout(frame = FALSE,
+              bg.color = "grey85",
+              legend.position = c("left", "top"),
+              legend.text.color = "white",
+              legend.title.color = "white")
+  
+  accessibility_maps[[i]] <- map}
+
+names(accessibility_maps) <- selected_f
+
+# plot the maps
+tmap_arrange(accessibility_maps)
+```
+
+Similar to Kwan (1998) and Vale and Pereira (2017), correlations in accessibility across measures are generally strong (Figure 3), indicating many capture similar spatial processes. Of those used in Figures 1 and 2 for example, results from the negative exponential (`EXP0_15`), modified Gaussian (`MGAUS180`), cumulative rectangular (`CUMR40`), and cumulative linear (`CUML40`) measures of impedance all show correlation coefficients of at least 0.75. In particular, the correlation between the `EXP0_15` and `MGAUS180` measures is 0.99. Results from the inverse power (`POW2_0`) measure are more unique, with correlations ranging from 0.72 to 0.85. It should be emphasized that such outcomes are not a product of similar functional forms alone; rather, the correlations reflect an interaction between the different impedance measures and the spatial distribution of opportunities on the travel network in the study area. Furthermore, absolute accessibility totals differ across each, suggesting the choice of a suitable impedance function and specification remains an important issue that should be guided by theory and assumptions about travel behavior.
+
+```{r figure3, fig.height=10, fig.width=10, fig.cap="\\label{fig:figure3}Figure 3. Impedance Measure Correlations", echo=FALSE}
+# create dataframe of variables for correlation analysis
+correlations <- input_sf_accessibility %>% select(all_of(selected_f)) %>% st_drop_geometry() %>% drop_na() %>% cor(.)
+
+# currently have to trick corrplot's colour labelling system with some white to start the ramp at a defined minimum
+# this may change in the future (see https://github.com/taiyun/corrplot/issues/122)
+# if so, can just change to col = viridis:viridis in corrplot code
+virid <- colorRampPalette(c("#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF",
+                           "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF",
+                           "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", 
+                           "#FFFFFF", #midpoint
+                           "#440154FF", "#481567FF", "#482677FF", "#453781FF", "#404788FF", "#39568CFF",
+                           "#33638DFF", "#2D708EFF", "#287D8EFF", "#238A8DFF", "#1F968BFF", "#20A387FF", 
+                           "#29AF7FFF", "#3CBB75FF", "#55C667FF", "#73D055FF", "#95D840FF", "#B8DE29FF",
+                           "#DCE319FF", "#FDE725FF"))
+
+corrplot(correlations,
+         method = "color", # corrplot method
+         type = "upper", # upper triangle matrix
+         addCoef.col = "white", # correlation text colour
+         number.cex = 0.8, # correlation text size
+         tl.col = "black", # text label colour
+         tl.srt = 45, # text label angle
+         tl.cex = 0.9, # text label size
+         cl.lim = c(min(correlations), 1), # colour label limits
+         #diag = FALSE, # turn off diagonal
+         is.corr=FALSE, # because all coefficients are positive
+         col = virid(100)) # custom colour scheme based on viridis hex values
+```
+
+While the focus on walking and transit trips in this sample analysis does not provide a full picture of travel behavior in the study area, the `r5r` package enables users to run multiple analyses for different travel modes. Moreover, the R notebook can be utilized to select or customize the implemented impedance measures in accordance with expectations about travel behavior for each mode. Taken together, this toolbox enables researchers and practitioners to make better decisions about the specification and customization of travel impedance and simplify the calculation of place-based accessibility for their study context.
+
+# REFERENCES
+
+Fotheringham, A. S., & O’Kelly, M. E. (1989). *Spatial interaction models: Formulations and applications*. Boston: Kluwer Academic.
+
+Geurs, K. T., & Van Wee, B. (2004). Accessibility evaluation of land-use and transport strategies: review and research directions. *Journal of Transport Geography*, 12(2), 127-140. https://doi.org/10.1016/j.jtrangeo.2003.10.005
+
+Handy, S. L., & Niemeier, D. A. (1997). Measuring accessibility: An exploration of issues and alternatives. *Environment and Planning A*, 29(7), 1175-1194. https://doi.org/10.1068%2Fa291175
+
+Hansen, W. G. (1959). How accessibility shapes land use. *Journal of the American Institute of Planners*, 25(2), 73-76. https://doi.org/10.1080/01944365908978307
+
+Ingram, D. R. (1971). The concept of accessibility: A search for an operational form. *Regional Studies*, 5(2), 101-107. https://doi.org/10.1080/09595237100185131
+
+Kwan, M. P. (1998). Space‐time and integral measures of individual accessibility: A comparative analysis using a point‐based framework. *Geographical Analysis*, 30(3), 191-216. https://doi.org/10.1111/j.1538-4632.1998.tb00396.x
+
+Martínez, L. M., & Viegas, J. M. (2013). A new approach to modelling distance-decay functions for accessibility assessment in transport studies. *Journal of Transport Geography*, 26, 87-96. https://doi.org/10.1016/j.jtrangeo.2012.08.018
+
+Páez, A., Scott, D. M., & Morency, C. (2012). Measuring accessibility: Positive and normative implementations of various accessibility indicators. *Journal of Transport Geography*, 25, 141-153. https://doi.org/10.1016/j.jtrangeo.2012.03.016
+
+Reggiani, A., Bucci, P., & Russo, G. (2011). Accessibility and impedance forms: empirical applications to the German commuting network. *International Regional Science Review*, 34(2), 230-252. https://doi.org/10.1177/0160017610387296
+
+Sen, A., & Smith, T. E. (1995). *Gravity models of spatial interaction behavior*. Berlin: Springer-Verlag.
+
+Stewart, J. Q. (1948). Demographic gravitation: evidence and applications. *Sociometry*, 11(1/2), 31-58. https://doi.org/10.2307/2785468
+
+Vale, D. S., & Pereira, M. (2017). The influence of the impedance function on gravity-based pedestrian accessibility measures: A comparative analysis. *Environment and Planning B: Urban Analytics and City Science*, 44(4), 740-763. https://doi.org/10.1177%2F0265813516641685
+
+Wilson, A. G. (1971). A family of spatial interaction models, and associated developments. *Environment and Planning A*, 3(1), 1-32. https://doi.org/10.1068/a030001
+
+Zipf, G. K. (1949). *Human behavior and the principle of least effort*. Cambridge: Addison-Wesley.
