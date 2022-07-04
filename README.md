@@ -12,18 +12,7 @@ The Accessibility Toolbox contains three tools:
 
 3. The third is the **Accessibility Calculator for R** that builds on the original R notebook's code to incorporate an open and reproducible workflow for calculating accessibility using the new [r5r](https://github.com/ipeaGIT/r5r) tool.
 
-## Updates
-- ```v2.2``` added the *Accessibility Calculator for R* notebook that makes use of [r5r](https://github.com/ipeaGIT/r5r) to calculate accessibility entirely within RStudio
-  - free and open-source
-  - rapid calculation time
-  - batching algorithm using [disk.frame](https://github.com/xiaodaigh/disk.frame) to enable large-scale analyses on memory-constrained systems
-  - fully reproducible code for the sample analysis of census block accessibility to jobs in New York City
-
-- ```v2.1``` added the *OD Cost Matrix Calculator for ArcGIS Pro 2.4 Multiprocessing* for the rapid calculation of raw origin-destination cost matrices
-  - takes full advantage of your multi-core PC
-  - joins back in the original origins ID for further analysis
-  - note - the final merge of all the worker matrices might take a while for very large analyses with billions of rows as this operation is still single-threaded  
-  
+## Updates  
 See [version history](https://github.com/higgicd/Accessibility_Toolbox/blob/master/version_history.md) for previous releases
 
 ## Calculating Accessibility in ArcGIS
