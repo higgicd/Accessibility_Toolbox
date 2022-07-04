@@ -1,4 +1,8 @@
 
+# History files
+.Rhistory
+
+# R5 Graph files
 r5_graph/network.dat
 r5_graph/osm.pbf
 r5_graph/osm.pbf.mapdb
