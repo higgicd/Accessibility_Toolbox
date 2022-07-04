@@ -1,7 +1,10 @@
 ## Version History
-- ```v2.2``` added the *OD Cost Matrix to Parquet Dataset* tool
-  - the Parquet format is [great](https://www.upsolver.com/blog/apache-parquet-why-use)! No more `.csv`'s!
-  - and fixed the `od_lines` referenced before assignment error that arises when a particular batch returns no results
+- ```v2.2``` 
+  - added the *OD Cost Matrix to Parquet Dataset* tool; the Parquet format is [great](https://www.upsolver.com/blog/apache-parquet-why-use)! No more `.csv`'s!
+  - added the *Accessibility Calculator for R* notebook that makes use of [r5r](https://github.com/ipeaGIT/r5r) to calculate accessibility entirely within RStudio; the tool also uses Parquet to store the od matrix on disk
+  - fully reproducible code for the sample analysis of census block accessibility to jobs in New York City
+  - fixed the `od_lines` referenced before assignment error that arises when a particular batch returns no results in the ArcGIS Pro tools
+  
 - ```v2.1``` added the *OD Cost Matrix Calculator for ArcGIS Pro 2.4 Multiprocessing* for the rapid calculation of raw origin-destination cost matrices
   - takes full advantage of your multi-core PC
   - joins back in the original origins ID for further analysis
