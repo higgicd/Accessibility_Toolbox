@@ -1,4 +1,7 @@
 ## Version History
+- ```v2.2``` added the *OD Cost Matrix to Parquet Dataset* tool
+  - the Parquet format is [great](https://www.upsolver.com/blog/apache-parquet-why-use)! No more `.csv`'s!
+  - and fixed the `od_lines` referenced before assignment error that arises when a particular batch returns no results
 - ```v2.1``` added the *OD Cost Matrix Calculator for ArcGIS Pro 2.4 Multiprocessing* for the rapid calculation of raw origin-destination cost matrices
   - takes full advantage of your multi-core PC
   - joins back in the original origins ID for further analysis

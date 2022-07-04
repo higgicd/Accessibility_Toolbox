@@ -280,15 +280,13 @@ def access_multi(jobs):
     result = odcm.solve()
 
     # 4 EXPORT results to a feature class
-    if result.solveSucceeded:
-        #result.export(arcpy.nax.OriginDestinationCostMatrixOutputDataType.Lines, 
-        #              os.path.join(r"in_memory", "od_lines_"+str(batch_id)))
-        #od_lines = os.path.join(r"in_memory", "od_lines_"+str(batch_id))
-        
-        # ----- un-comment this and comment-out the above if you want to store the od_lines on disk -----
-        result.export(arcpy.nax.OriginDestinationCostMatrixOutputDataType.Lines, 
-                      os.path.join(worker_gdb+"\\od_lines_"+str(batch_id)))
-        od_lines = os.path.join(worker_gdb+"\\od_lines_"+str(batch_id))
+    # fail? skip
+    if not result.solveSucceeded:
+        return
+    
+    result.export(arcpy.nax.OriginDestinationCostMatrixOutputDataType.Lines, 
+                    os.path.join(worker_gdb+"\\od_lines_"+str(batch_id)))
+    od_lines = os.path.join(worker_gdb+"\\od_lines_"+str(batch_id))
     
     arcpy.management.Delete(r"in_memory")
     #return output_table
@@ -349,7 +347,8 @@ def main(input_network, travel_mode, cutoff, time_of_day,
     multiprocessing.set_executable(os.path.join(sys.exec_prefix, 'pythonw.exe'))
     arcpy.AddMessage("Sending batch to multiprocessing pool...")
     pool = multiprocessing.Pool(processes = cpu_count(multiprocessing.cpu_count()))
-    result = pool.map(access_multi, jobs)
+    #result = pool.map(access_multi, jobs)
+    result = [x for x in pool.map(access_multi, jobs) if x is not None]
     pool.close()
     pool.join()
     arcpy.AddMessage("Multiprocessing complete, merging matrices...")
@@ -374,4 +373,4 @@ if __name__ == '__main__':
          search_tolerance_j, search_criteria_j, search_query_j,
          batch_size_factor, output_dir, output_gdb)
     elapsed_time = time.time() - start_time
-    arcpy.AddMessage("ODCM calculation took "+str(elapsed_time))
+    arcpy.AddMessage("ODCM calculation took "+str(elapsed_time/60)+" minutes...")

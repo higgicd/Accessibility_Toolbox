@@ -16,35 +16,36 @@ accessibility, spatial interaction, travel behavior, travel impedance, distance 
 ```{r setup, include=FALSE}
 # the r5r package requires Java Development Kit version 11, which can be downloaded from https://www.oracle.com/java/technologies/javase-jdk11-downloads.html
 
+# assign memory for r5r to work with
+options(java.parameters = "-Xmx6G") 
+
 # load packages
 library(corrplot)
-library(disk.frame)
 library(httr)
 library(knitr)
-library(lodes)
-#devtools::install_git("https://github.com/hrbrmstr/lodes.git") # if you need to download
+library(lehdr)
 library(tidyverse)
+library(fs)
 library(r5r)
 library(sf)
 library(tidycensus)
 library(tidytransit)
 library(tmap)
+library(viridis)
+library(progress)
+library(arrow)
 
 # setup options
-setup_disk.frame() # setup disk.frame parallel computing
-options(future.globals.maxSize = Inf) # allow disk.frame threads to talk to eachother without limits
-options(java.parameters = "-Xmx6G") # assign memory for r5r to work with
 tmap_mode("plot")
 
 # setup keys
-census_api_key("INSERT_KEY_HERE") # get from https://api.census.gov/data/key_signup.html
-interline_token <- "INSERT_TOKEN_HERE" # for OSM extract from https://www.interline.io/osm/extracts/
+census_api_key("your_key_here") # get from https://api.census.gov/data/key_signup.html
+interline_token <- "your_key_here" # for OSM extract from https://www.interline.io/osm/extracts/
 
 # create data directories
-dir.create("./data") # for storing data
-dir.create("./df") # for storing od matrix as a disk.frame
-dir.create("./r5_graph") # for the r5 network graph
-r5_path <- file.path("./r5_graph")
+data_path <- dir_create("./data") # for storing data
+ttm_path <- dir_create("./r5_ttm") # for storing od matrix
+r5_path <- dir_create("./r5_graph") # for the r5 network graph
 ```
 
 # RESEARCH QUESTIONS AND HYPOTHESES
@@ -275,7 +276,7 @@ kable(table1, caption = "Table 1. Impedance Measures in the Accessibility Toolbo
 ```{r load RData, echo = FALSE}
 # you can run the code below to download the data (remember your api keys!)
 # or load it pre-processed from here:
-load(file = "./data/nyc_cb_poly.RData")
+load(file = path(data_path, "nyc_cb_poly.RData"))
 ```
 
 The first step is to download the census data that will be used as indicators of opportunities. This includes downloading census population and employment data at the block level for New York City using the `tidycensus` and `lodes` packages respectively:
@@ -292,12 +293,13 @@ ny_pop <- get_decennial(geography = "block",
   select(Block_GEOID, total_pop)
 
 # download longitudinal origin-destination employment survey data
-ny_lodes <- read_lodes(state = "ny", 
-                       type = "workplace", # workplace location
-                       segment = "S000",# all segments of employment
-                       job_type = "JT00", # all job types
-                       year = "2010", 
-                       download_dir = "./data") %>%
+ny_lodes <- grab_lodes(state = "ny", 
+                       year = 2010, 
+                       lodes_type = "wac", 
+                       job_type = "JT00",
+                       segment = "S000", 
+                       state_part = "main", 
+                       agg_geo = "block") %>%
   rename(Block_GEOID = w_geocode, total_emp = C000) %>% 
   mutate(Block_GEOID = as.character(Block_GEOID)) %>%
   select(Block_GEOID, total_emp)
@@ -314,7 +316,7 @@ GET("https://data.cityofnewyork.us/api/geospatial/v2h8-6mxf?method=export&format
 unzip(zipfile = "./data/NYC_CensusBlocks.zip", exdir = "./data")
 
 # load census blocks poly
-nyc_cb_poly <- st_read("./data/nycb2010_21a/nycb2010.shp") %>% 
+nyc_cb_poly <- st_read(dir_ls(path = data_path, regexp  = "nycb2010.shp$", recurse = TRUE)) %>% 
   st_transform(crs = 26918) %>% # project to NAD 1983 Zone 18N
   
   # create and set GEOID fields: see https://www.census.gov/programs-surveys/geography/guidance/geo-identifiers.html
@@ -342,7 +344,7 @@ nyc_cb_poly <- st_read("./data/nycb2010_21a/nycb2010.shp") %>%
 
 With the census data prepared, the second step is to download the travel network data. This consists of an extract of Open Street Map (OSM) data from [interline.io](https://www.interline.io/osm/extracts/):
 
-```{r download osm, include=FALSE}
+```{r download osm, include=FALSE, eval = FALSE}
 # Download OpenStreetMap data for the NYC metro area from Interline map extracts
 download.file(url = paste0("https://app.interline.io/osm_extracts/download_latest?string_id=new-york_new-york&data_format=pbf&api_token=", interline_token),
               destfile = file.path(r5_path, "osm.pbf"), mode = "wb")
@@ -398,13 +400,13 @@ In addition, a `chunk_size` parameter is used to control batching as the base `t
 ```{r define parameters, warning = FALSE}
 # 1. Generalize calls to input simple features
 # origins
-origins_sf <-  nyc_cb_poly
+origins_i <-  nyc_cb_poly
 origins_id_field <- "Block_GEOID"
 
 # destinations
-destinations_sf <-  nyc_cb_poly
+destinations_j <-  nyc_cb_poly
 destinations_id_field <- "Block_GEOID"
-o_j_field <- "total_emp"
+opportunities_j_field <- "total_emp"
 
 # select your impedance functions
 selected_f <- c("POW2_0", "EXP0_15", "MGAUS180", "CUML40", "CUMR40") # pick one or more impedance functions
@@ -419,22 +421,22 @@ selected_f <- c("POW2_0", "EXP0_15", "MGAUS180", "CUML40", "CUMR40") # pick one 
 # WALK, BICYCLE, CAR, BICYCLE_RENT, CAR_PARK
 
 # define your travel modes
-travel_mode <- c("WALK", "TRANSIT")
+mode <- c("WALK", "TRANSIT")
 
 # egress mode
-mode_egress = "WALK" # Transport mode used after egress from public transport; it can be either 'WALK', 'BICYCLE', or 'CAR'. Defaults to "WALK"
+#mode_egress = "WALK" # Transport mode used after egress from public transport; it can be either 'WALK', 'BICYCLE', or 'CAR'. Defaults to "WALK"
 
 # walk speed
-walk_speed = 3.6 #Average walk speed in km/h. Defaults to 3.6 km/h
+#walk_speed = 3.6 #Average walk speed in km/h. Defaults to 3.6 km/h
 
 # bike speed
-bike_speed = 12 # Average cycling speed in km/h. Defaults to 12 km/h
+#bike_speed = 12 # Average cycling speed in km/h. Defaults to 12 km/h
   
 # max rides
-max_rides = 3 # The max number of public transport rides allowed in the same trip. Defaults to 3
+#max_rides = 3 # The max number of public transport rides allowed in the same trip. Defaults to 3
 
 # level of traffic stress (cycling)
-max_lts = 2 # The maximum level of traffic stress that cyclists will tolerate. A value of 1 means cyclists will only travel through the quietest streets, while a value of 4 indicates cyclists can travel through any road; defaults to 2
+#max_lts = 2 # The maximum level of traffic stress that cyclists will tolerate. A value of 1 means cyclists will only travel through the quietest streets, while a value of 4 indicates cyclists can travel through any road; defaults to 2
 
 # define trip start datetime
 departure_datetime <- as.POSIXct("2021-03-22 08:00:00",  # must be within calendar range of gtfs 
@@ -463,7 +465,7 @@ With the input data collected and parameters set, the next step is to calculate 
 First, the network graph will be created.
 
 ```{r build graph, include = FALSE}
-r5_network <- setup_r5(data_path = r5_path, verbose = FALSE)
+r5r_core <- setup_r5(data_path = r5_path, verbose = FALSE)
 ```
 
 ## Prepare Input Data for Analysis
@@ -476,133 +478,105 @@ impedance_f <- c(POW, NEG_EXP, MGAUS, CUMR, CUML)
 
 # ORIGINS
 # create input sf object and change to crs 4326 for origins
-origins_sf <- origins_sf %>% 
+origins_i_sf <- origins_i %>% 
   select(all_of(origins_id_field)) %>% 
   rename(id = all_of(origins_id_field))
 
-# convert origins to points for r5r
-origins_sf_point <- origins_sf %>%
+origins_i <- origins_i_sf %>% 
   st_centroid() %>% # to centroids
-  st_transform(crs = 4326) # transform to lat-longs
-
-# save origin centroids in format expected by R5R (id, lon, lat)
-origins_i <- cbind(as.data.frame(origins_sf_point), st_coordinates(origins_sf_point)) %>%
-  rename(lon = X, lat = Y) %>%
-  select(id, lon, lat)
+  st_transform(crs = 4326) %>% # transform to lat-longs
+  mutate(batch_id = ceiling(row_number()/chunksize))
 
 # DESTINATIONS
 # create input sf object and change to crs 4326 for destinations
-destinations_sf <- destinations_sf %>% 
-  select(all_of(c(destinations_id_field, o_j_field))) %>% 
-  rename(id = all_of(destinations_id_field), o_j = all_of(o_j_field))
-
-# convert destinations to points for r5r
-destinations_sf_point <- destinations_sf %>%
+destinations_j <- destinations_j %>% 
+  select(all_of(c(destinations_id_field, opportunities_j_field))) %>% 
+  rename(id = all_of(destinations_id_field), o_j = all_of(opportunities_j_field)) %>%
+  filter(o_j > 0) %>%
   st_centroid() %>% # to centroids
   st_transform(crs = 4326) # transform to lat-longs
-  
-# prepare destination opportunities for joining to the r5r output
-opportunities_j <- as.data.frame(destinations_sf_point) %>% 
+
+opportunities_j <- destinations_j %>%
+  st_drop_geometry() %>% 
   select(id, o_j) %>% 
   rename(toId = id)
-
-destinations_j <- cbind(as.data.frame(destinations_sf_point), st_coordinates(destinations_sf_point)) %>%
-  filter(o_j > 0) %>% 
-  rename(lon = X, lat = Y) %>%
-  select(id, lon, lat)
 ```
 
 ## Calculate Origin-Destination Matrix
 
-Third, the origin-destination matrix is calculated in accordance with the travel and batching parameters set earlier.
+Third, the origin-destination matrix is calculated in accordance with the travel and batching parameters set earlier. In this case, I have set the ODCM to save to disk as a parquet dataset, which is a great format for compressed storage and for larger-than-memory calculations. Because the travel time matrix is stored on disk already, I have set this chunk to `eval = FALSE`.
 
-```{r calculate od matrix, include = FALSE}
+```{r calculate od matrix, echo = FALSE, eval = FALSE}
 # set up batching 
-num_chunks = ceiling(nrow(origins_i)/chunksize)
+num_chunks = origins_i %>% st_drop_geometry() %>% summarize(num_chunks = max(batch_id)) %>% pull(num_chunks)
 
-# create origin-destination pairs
-origins_chunks <- as.disk.frame(origins_i,
-                          outdir = "./df/origins_i",
-                          nchunks = num_chunks,
-                          overwrite = TRUE)
-
+# compute travel time matrix
 start.time <- Sys.time()
 pb <- txtProgressBar(0, num_chunks, style = 3)
 
 for (i in 1:num_chunks){
-  origins_i_chunk <- get_chunk(origins_chunks, i)
-  ttm_chunk <- travel_time_matrix(r5r_core = r5_network,
-                          origins = origins_i_chunk,
-                          destinations = destinations_j,
-                          mode = travel_mode,
-                          mode_egress = mode_egress,
-                          departure_datetime = departure_datetime,
-                          max_walk_dist = max_walk_dist,
-                          max_trip_duration = max_trip_duration,
-                          walk_speed = walk_speed,
-                          bike_speed = bike_speed,
-                          max_rides = max_rides,
-                          max_lts = max_lts,
-                          n_threads = n_threads)
+  origins_i_chunk <- origins_i %>% filter(batch_id == i)
   
-  # export output as disk.frame
-  ifelse(i == 1, output_df <- as.disk.frame(ttm_chunk,
-                                            nchunks = 1,
-                                            outdir = "./df/output_ttm",
-                                            compress = 100, # 100% compression rate - you can make this between 0-100
-                                            overwrite = TRUE),
-         add_chunk(output_df, ttm_chunk, chunk_id = i))
-  setTxtProgressBar(pb, i)
-}
+  ttm_chunk <- travel_time_matrix(
+    r5r_core = r5r_core,
+    origins = origins_i_chunk,
+    destinations = destinations_j,
+    mode = mode,
+    departure_datetime = departure_datetime,
+    max_walk_dist = max_walk_dist,
+    max_trip_duration = max_trip_duration,
+    verbose = FALSE,
+    progress = FALSE) %>%
+    
+  mutate(batch_id = i)
+  
+  # export output as parquet
+  write_dataset(ttm_chunk, path = ttm_path, partitioning = "batch_id")
+  
+  setTxtProgressBar(pb, i)}
+
 end.time <- Sys.time()
 print(paste0("OD matrix calculation took ", round(difftime(end.time, start.time, units = "mins"), digits = 2), " minutes..."))
 ```
 
 ## Calculate and Summarize Accessibility
 
-Finally, accessibilities are calculated using the selected impedance function(s) by iterating over all the batches of the origin-destination matrix.
+Finally, accessibilities are calculated using the selected impedance function(s) by iterating over all the batches of the origin-destination matrix. 
 
-```{r calculate accessibility, message = FALSE, warning = FALSE, include = FALSE}
-# connect to the subway travel time matrix disk frame
-ttm <- disk.frame("./df/output_ttm")
+The first way to do this is straightforward using `arrow`: calculate over the whole dataset using a single function. This makes use of the larger-than-memory processing capabilities of `arrow`. However, core math functions like `exp()` are not yet implemented for dataset calculations (they should be in version 9). So this does not work at the moment. The second option is to use the `map_batches` functionality in `arrow` to map a function to the individual dataset batches. This is because `dplyr` verbs such as `across` are not yet implemented in `arrow`, so the batch must first be brought into memory. I think I prefer the first way (when it will work!) and will update this code as the `arrow` package matures.
 
-# calculate accessibility by iterating over disk.frame chunks
-accessibility <- list()
 
-pb <- txtProgressBar(0, nchunks(ttm), style = 3)
+```{r calculate accessibility, echo = FALSE}
+ttm <- open_dataset(path(ttm_path))
 
-for (i in 1:nchunks(ttm)){
- df_chunk <- get_chunk(ttm, i) %>%
-   left_join(opportunities_j, by="toId") %>%
+accessibility <- ttm %>%
+  
+  map_batches(function(batch) {
+    batch %>%
+      as.data.frame() %>%
+      
+      # join opportunities
+      left_join(opportunities_j, by = "toId") %>%
+      
+      # mutate across the selected functions
+      mutate(across(travel_time, .fns= impedance_f[selected_f], .names = "{fn}")) %>%
    
-   # get pdf and cdf function weighted travel times
-   mutate(across(travel_time, .fns= impedance_f[selected_f], .names = "{fn}")) %>%
-   #mutate(across(travel_time, .fns= NEG_EXP, .names = "{fn}")) %>%
-   
-   # multiply weights by opportunities
-   mutate(across(all_of(selected_f), .fns = function(f) f*.$o_j)) %>%
-   
-   # group and summarize accessibility
-   group_by(fromId) %>%
-   summarize(across(all_of(selected_f), sum)) %>%
-   
-   # rename fromId to the GEOID for the nyc sf data
-   rename(id = fromId) %>%
-   collect()
- 
- accessibility[[i]] <- df_chunk
- setTxtProgressBar(pb, i)}
-
-accessibility <- bind_rows(accessibility)
-```
+      # multiply weights by opportunities
+      mutate(across(all_of(selected_f), .fns = function(f) f*.$o_j)) %>%
+      
+      # summarize results
+      group_by(fromId) %>% 
+      summarize(across(all_of(selected_f), sum))
+  })
+```  
 
 # FINDINGS
 
-In the sample analysis, the `travel_time_matrix()` function from the `r5r` package to calculate accessibility to employment reachable within 120 minutes from each of New York City’s 38,800 census blocks using a selection of 5 impedance measures from Kwan (1998). Mapped results are shown in Figure 2. The use of multiprocessing by R5 offers fast calculation of the OD matrix while the implementation of a batching workflow using `disk.frame` limits memory use for very large analyses and stores results on disk. 
+In the sample analysis, the `travel_time_matrix()` function from the `r5r` package to calculate accessibility to employment reachable within 120 minutes from each of New York City’s 38,800 census blocks using a selection of 5 impedance measures from Kwan (1998). Mapped results are shown in Figure 2. The use of multiprocessing by R5 offers fast calculation of the OD matrix while the implementation of a batching workflow using `arrow` limits memory use for very large analyses and stores results on disk. 
 
 ```{r figure2, fig.height=3.5, fig.width=12.5, fig.cap="\\label{fig:figure2}Figure 2. Walkable Employment Accessibility Comparison", message=FALSE, warning=FALSE, echo=FALSE}
 # join results to input_sf object
-input_sf_accessibility <- left_join(origins_sf, accessibility, by="id")
+input_sf_accessibility <- left_join(origins_i_sf, accessibility, by=c("id" = "fromId"))
 
 # iterate through selected functions to create maps
 accessibility_maps <- list()
@@ -629,21 +603,9 @@ tmap_arrange(accessibility_maps)
 
 Similar to Kwan (1998) and Vale and Pereira (2017), correlations in accessibility across measures are generally strong (Figure 3), indicating many capture similar spatial processes. Of those used in Figures 1 and 2 for example, results from the negative exponential (`EXP0_15`), modified Gaussian (`MGAUS180`), cumulative rectangular (`CUMR40`), and cumulative linear (`CUML40`) measures of impedance all show correlation coefficients of at least 0.75. In particular, the correlation between the `EXP0_15` and `MGAUS180` measures is 0.99. Results from the inverse power (`POW2_0`) measure are more unique, with correlations ranging from 0.72 to 0.85. It should be emphasized that such outcomes are not a product of similar functional forms alone; rather, the correlations reflect an interaction between the different impedance measures and the spatial distribution of opportunities on the travel network in the study area. Furthermore, absolute accessibility totals differ across each, suggesting the choice of a suitable impedance function and specification remains an important issue that should be guided by theory and assumptions about travel behavior.
 
-```{r figure3, fig.height=10, fig.width=10, fig.cap="\\label{fig:figure3}Figure 3. Impedance Measure Correlations", echo=FALSE}
+```{r figure3, fig.height=10, fig.width=10, fig.cap="\\label{fig:figure3}Figure 3. Impedance Measure Correlations", warning = FALSE, echo=FALSE}
 # create dataframe of variables for correlation analysis
 correlations <- input_sf_accessibility %>% select(all_of(selected_f)) %>% st_drop_geometry() %>% drop_na() %>% cor(.)
-
-# currently have to trick corrplot's colour labelling system with some white to start the ramp at a defined minimum
-# this may change in the future (see https://github.com/taiyun/corrplot/issues/122)
-# if so, can just change to col = viridis:viridis in corrplot code
-virid <- colorRampPalette(c("#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF",
-                           "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF",
-                           "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", 
-                           "#FFFFFF", #midpoint
-                           "#440154FF", "#481567FF", "#482677FF", "#453781FF", "#404788FF", "#39568CFF",
-                           "#33638DFF", "#2D708EFF", "#287D8EFF", "#238A8DFF", "#1F968BFF", "#20A387FF", 
-                           "#29AF7FFF", "#3CBB75FF", "#55C667FF", "#73D055FF", "#95D840FF", "#B8DE29FF",
-                           "#DCE319FF", "#FDE725FF"))
 
 corrplot(correlations,
          method = "color", # corrplot method
@@ -656,7 +618,7 @@ corrplot(correlations,
          cl.lim = c(min(correlations), 1), # colour label limits
          #diag = FALSE, # turn off diagonal
          is.corr=FALSE, # because all coefficients are positive
-         col = virid(100)) # custom colour scheme based on viridis hex values
+         col = viridis::viridis(100)) # custom colour scheme based on viridis hex values
 ```
 
 While the focus on walking and transit trips in this sample analysis does not provide a full picture of travel behavior in the study area, the `r5r` package enables users to run multiple analyses for different travel modes. Moreover, the R notebook can be utilized to select or customize the implemented impedance measures in accordance with expectations about travel behavior for each mode. Taken together, this toolbox enables researchers and practitioners to make better decisions about the specification and customization of travel impedance and simplify the calculation of place-based accessibility for their study context.
