@@ -98,7 +98,8 @@ t_ij <- data.frame(t_ij = seq(from = 0, to = 60, by=1))
 With a foundation in early gravity models of spatial interaction (e.g. Stewart, 1948; Zipf, 1949), the inverse power function produces a rapid decline in the weight of opportunities as travel time increases. While power functions draw analogs to Newtonian physics, their theoretical relevance to human travel behavior has been questioned (Sen and Smith, 1995).
 
 ```{r inverse power function, echo=FALSE}
-power_f <- function(t_ij,b0){ifelse(test = t_ij < 1, yes = 1, no = t_ij^-b0)}
+power_f <- function(t_ij,b0){case_when(t_ij < 1 ~ 1,
+                                       TRUE ~ t_ij^-b0)}
 
 POW <- list(POW0_8 = function(t_ij){power_f(t_ij, b0 = 0.8)},
             POW1_0 = function(t_ij){power_f(t_ij, b0 = 1.0)},
@@ -187,7 +188,8 @@ ggplot((t_ij), aes(t_ij)) +
 The cumulative rectangular function is an isochronic measure that applies a constant weight to all opportunities reachable within some travel time window whose maximum is defined by $\bar{t}$. Although the application of a constant weight runs counter to the geographic principle of distance deterrence or decay that underpins travel behavior theory, such functions remain popular due to their ease of interpretation.
 
 ```{r cumulative rectangular function, echo=FALSE}
-cumr_f = function(t_ij,t_bar){ifelse(test = t_ij <= t_bar, yes = 1, no = 0)}
+cumr_f = function(t_ij,t_bar){case_when(t_ij <= t_bar ~ 1,
+                                        TRUE ~ 0)}
 
 CUMR <- list(CUMR10 = function(t_ij){cumr_f(t_ij, t_bar = 10)},
              CUMR20 = function(t_ij){cumr_f(t_ij, t_bar = 20)},
@@ -216,7 +218,8 @@ ggplot((t_ij), aes(t_ij)) +
 Finally, the cumulative linear function is a hybrid of the continuous and cumulative approaches, linearly discounting opportunities within an isochrone.
 
 ```{r cumulative linear function, echo=FALSE}
-cuml_f = function(t_ij,t_bar){ifelse(test = t_ij <= t_bar, yes = (1-t_ij/t_bar), no = 0)}
+cuml_f = function(t_ij,t_bar){case_when(t_ij <= t_bar ~ 1-t_ij/t_bar,
+                                        TRUE ~ 0)}
 
 CUML <- list(CUML10 = function(t_ij){cuml_f(t_ij, t_bar = 10)},
              CUML20 = function(t_ij){cuml_f(t_ij, t_bar = 20)},
@@ -439,7 +442,7 @@ mode <- c("WALK", "TRANSIT")
 #max_lts = 2 # The maximum level of traffic stress that cyclists will tolerate. A value of 1 means cyclists will only travel through the quietest streets, while a value of 4 indicates cyclists can travel through any road; defaults to 2
 
 # define trip start datetime
-departure_datetime <- as.POSIXct("2021-03-22 08:00:00",  # must be within calendar range of gtfs 
+departure_datetime <- as.POSIXct("2021-05-04 08:00:00",  # must be within calendar range of gtfs 
                                  format = "%Y-%m-%d %H:%M:%S", 
                                  tz = "America/New_York") # see https://en.wikipedia.org/wiki/List_of_tz_database_time_zones for list of time zone codes
 
@@ -447,7 +450,7 @@ departure_datetime <- as.POSIXct("2021-03-22 08:00:00",  # must be within calend
 max_walk_dist = 4000
 
 # max trip duration (minutes)
-max_trip_duration = 120
+max_trip_duration = 45
 
 # processing batch size - how many origin rows to process at one time
 chunksize = 500 # how many origins to consider at one time; set to nrow(origins_sf) if you don't want to use
@@ -541,40 +544,111 @@ print(paste0("OD matrix calculation took ", round(difftime(end.time, start.time,
 
 ## Calculate and Summarize Accessibility
 
-Finally, accessibilities are calculated using the selected impedance function(s) by iterating over all the batches of the origin-destination matrix. 
+Finally, accessibilities are calculated using the selected impedance function(s) by iterating over all the batches of the origin-destination matrix. There's a few ways of doing this.
 
-The first way to do this is straightforward using `arrow`: calculate over the whole dataset using a single function. This makes use of the larger-than-memory processing capabilities of `arrow`. However, core math functions like `exp()` are not yet implemented for dataset calculations (they should be in version 9). So this does not work at the moment. The second option is to use the `map_batches` functionality in `arrow` to map a function to the individual dataset batches. This is because `dplyr` verbs such as `across` are not yet implemented in `arrow`, so the batch must first be brought into memory. I think I prefer the first way (when it will work!) and will update this code as the `arrow` package matures.
+### Arrow
 
+The first way to do this is straightforward using `arrow`: calculate over the whole dataset using a single function, one-by-one. This makes use of the larger-than-memory processing capabilities of `arrow`. However, core math functions like `exp()` are not yet implemented for dataset calculations (they should be in version 9). So that does not work at the moment. `arrow` does also not appear to play well with defined functions, so one has to put them all in manually, like so:
 
-```{r calculate accessibility, echo = FALSE}
+```{r calculate accessibility using arrow, echo = FALSE}
 ttm <- open_dataset(path(ttm_path))
 
 accessibility <- ttm %>%
   
-  map_batches(function(batch) {
-    batch %>%
-      as.data.frame() %>%
+  # join opportunities
+  left_join(opportunities_j, by = "toId") %>%
+  
+  # mutate
+  mutate(POW2_0 = o_j * case_when(travel_time < 1 ~ 1, TRUE ~ travel_time^-2),
+         EXP0_15 = o_j *  2.71828^(-0.15*travel_time),
+         MGAUS180 = o_j * 2.71828^(-travel_time^2/180),
+         CUMR40 = o_j * case_when(travel_time <= 40 ~ 1, TRUE ~ 0),
+         CUML40 = o_j * case_when(travel_time <= 40 ~ 1-travel_time/40, TRUE ~ 0)) %>%
+  
+  # summarize results
+  group_by(fromId) %>%
+  summarize(POW2_0 = sum(POW2_0),
+            EXP0_15 = sum(EXP0_15),
+            MGAUS180 = sum(MGAUS180),
+            CUMR40 = sum(CUMR40),
+            CUML40 = sum(CUML40)) %>%
+  
+  collect()
+```
+
+This works well with one or a few selected functions, but does not scale well to using many functions.
+
+### Mapping Batches with Arrow
+
+The second option is to use the `map_batches` functionality in `arrow` to map a function to the individual dataset batches. This is because `dplyr` verbs such as `across` are not yet implemented in `arrow`, so the batch must first be brought into memory. However, in my testing with large travel time matrices, `map_batches` as used below can result in very high memory usage. Running this code on the saved `ttm` dataset uses many gigabytes of memory on my PC, so I believe this solution is **not stable**. As they note on the [website](https://arrow.apache.org/docs/r/articles/dataset.html): `map_batches` is experimental and not recommended for production use. I will keep this code for now to revisit in the future as the `arrow` package matures.
+
+```{r calculate accessibility with map_batches, echo = FALSE, eval = FALSE}
+#ttm <- open_dataset(path(ttm_path))
+
+#accessibility <- ttm %>%
+  
+#  map_batches(function(batch) {
+#    batch %>%
+#      as.data.frame() %>%
       
       # join opportunities
-      left_join(opportunities_j, by = "toId") %>%
+#      left_join(opportunities_j, by = "toId") %>%
       
       # mutate across the selected functions
-      mutate(across(travel_time, .fns= impedance_f[selected_f], .names = "{fn}")) %>%
+#      mutate(across(travel_time, .fns= impedance_f[selected_f], .names = "{fn}")) %>%
    
       # multiply weights by opportunities
-      mutate(across(all_of(selected_f), .fns = function(f) f*.$o_j)) %>%
+#      mutate(across(all_of(selected_f), .fns = function(f) f*.$o_j)) %>%
       
       # summarize results
-      group_by(fromId) %>% 
-      summarize(across(all_of(selected_f), sum))
-  })
+#      group_by(fromId) %>% 
+#      summarize(across(all_of(selected_f), sum))
+#  })
 ```  
+
+### Mapping Batches Manually
+
+A third way that does scale well for calculating results for all functions is to map batches manually by getting a list of all the `.parquet` files in the dataset and iterate over them. This works, but is not as clean as a pure `arrow` solution. I include it below for completeness.
+
+```{r calculate accessibility with purrr, echo = FALSE, eval = FALSE}
+pq_files <- dir_ls(path(ttm_path), glob = "*.parquet", recurse = TRUE)
+
+accessibility <- purrr::map_dfr(pq_files, function(batch){
+  access <- read_parquet(batch) %>% 
+    collect() %>%
+    
+    # join opportunities
+    left_join(opportunities_j, by = "toId") %>%
+    
+    # mutate across the selected functions
+    mutate(across(travel_time, .fns= impedance_f[selected_f], .names = "{fn}")) %>%
+ 
+    # multiply weights by opportunities
+    mutate(across(all_of(selected_f), .fns = function(f) f*.$o_j)) %>%
+    
+    # summarize results
+    group_by(fromId) %>% 
+    summarize(across(all_of(selected_f), sum))
+})
+```  
+
+### Accessibility through R5R
+
+As of a recent update, the R5R package itself can calculate accessibility natively. Compared to the manual workflow of calculating the travel time matrix followed by accessibility, this function does it all in one step. The impedance functions and their specifications do not align with the focus of this paper though.
+
+```{r}
+?r5r::accessibility
+```
+
+### Accessibility through the Upcoming Accessibility Package
+
+The core aspects of place-based accessibility analysis have become significantly more "accessible" since I started working on this toolbox in 2019. The team behind `R5R` at the Institute for Applied Economic Research (Ipea) in Brazil is working on a new `accessibility` [package](https://github.com/ipeaGIT/accessibility) for R that will offer these functions and more within an easy-to-use R package. For most R users, this package will likely supersede the more manual approach adopted by this tutorial when it becomes available. Nevertheless, the workflows in this document are likely to continue to have a place for large analyses.
 
 # FINDINGS
 
-In the sample analysis, the `travel_time_matrix()` function from the `r5r` package to calculate accessibility to employment reachable within 120 minutes from each of New York City’s 38,800 census blocks using a selection of 5 impedance measures from Kwan (1998). Mapped results are shown in Figure 2. The use of multiprocessing by R5 offers fast calculation of the OD matrix while the implementation of a batching workflow using `arrow` limits memory use for very large analyses and stores results on disk. 
+In the sample analysis, the `travel_time_matrix()` function from the `r5r` package to calculate accessibility to employment reachable within 45 minutes from each of New York City’s 38,800 census blocks using walking and transit and a selection of 5 impedance measures from Kwan (1998). Mapped results are shown in Figure 2. The use of multiprocessing by R5 offers fast calculation of the OD matrix while the implementation of a batching workflow using `arrow` limits memory use for very large analyses and stores results on disk. 
 
-```{r figure2, fig.height=3.5, fig.width=12.5, fig.cap="\\label{fig:figure2}Figure 2. Walkable Employment Accessibility Comparison", message=FALSE, warning=FALSE, echo=FALSE}
+```{r figure2, fig.height=3.5, fig.width=12.5, fig.cap="\\label{fig:figure2}Figure 2. Transit Employment Accessibility Comparison", message=FALSE, warning=FALSE, echo=FALSE}
 # join results to input_sf object
 input_sf_accessibility <- left_join(origins_i_sf, accessibility, by=c("id" = "fromId"))
 
